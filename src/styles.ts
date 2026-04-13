@@ -1662,4 +1662,309 @@ export const cardStyles = css`
       max-width: 94%;
     }
   }
+
+  /* ── Feature 1: Syntax highlighting (hljs dark theme) ── */
+  .hljs {
+    background: transparent;
+    color: var(--bonnie-ink-0);
+  }
+  .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link {
+    color: #E8A04C;
+    font-weight: 600;
+  }
+  .hljs-string, .hljs-attr, .hljs-template-variable, .hljs-addition {
+    color: #98C379;
+  }
+  .hljs-number, .hljs-variable, .hljs-template-tag, .hljs-deletion {
+    color: #D19A66;
+  }
+  .hljs-comment, .hljs-quote, .hljs-meta {
+    color: #6E7681;
+    font-style: italic;
+  }
+  .hljs-title, .hljs-section, .hljs-function {
+    color: #61AFEF;
+  }
+  .hljs-name, .hljs-selector-class, .hljs-selector-id {
+    color: #E06C75;
+  }
+  .hljs-type, .hljs-built_in, .hljs-class .hljs-title {
+    color: #E5C07B;
+  }
+  .hljs-params {
+    color: var(--bonnie-ink-1);
+  }
+  .hljs-tag {
+    color: #E06C75;
+  }
+  .hljs-emphasis { font-style: italic; }
+  .hljs-strong { font-weight: 700; }
+
+  /* ── Feature 2: Streaming text appearance ─────────────── */
+  .bubble.assistant .streaming-text {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  /* ── Feature 7: Token/cost stats ──────────────────────── */
+  .turn-stats {
+    font-size: 10.5px;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    color: var(--bonnie-ink-3);
+    padding: 2px 4px;
+    margin-top: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+  .bubble-row:hover .turn-stats {
+    opacity: 1;
+  }
+
+  /* ── Feature 8: Permission card ───────────────────────── */
+  .permission-card {
+    max-width: 88%;
+    background: rgba(255, 193, 7, 0.06);
+    border: 1.5px solid rgba(255, 193, 7, 0.35);
+    border-radius: 12px;
+    overflow: hidden;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 2px 12px rgba(255, 193, 7, 0.08);
+  }
+  .permission-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #F9A825;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .permission-header svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+  .permission-title { flex: 1; }
+  .permission-body {
+    font-size: 13px;
+    color: var(--bonnie-ink-1);
+    line-height: 1.5;
+  }
+  .permission-body strong {
+    color: #F9A825;
+    font-weight: 600;
+  }
+  .permission-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .permission-deny-btn, .permission-approve-btn {
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.12s;
+  }
+  .permission-deny-btn {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+    border: 1px solid var(--bonnie-border);
+  }
+  .permission-deny-btn:hover { background: var(--bonnie-surface-4); }
+  .permission-approve-btn {
+    background: rgba(255, 193, 7, 0.18);
+    color: #F9A825;
+    border: 1px solid rgba(255, 193, 7, 0.35);
+  }
+  .permission-approve-btn:hover { background: rgba(255, 193, 7, 0.28); }
+
+  /* ── Feature 5: Voice mic button ──────────────────────── */
+  .mic-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    color: var(--bonnie-ink-3);
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .mic-btn:hover {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+  }
+  .mic-btn.listening {
+    color: #E06C75;
+    background: rgba(224, 108, 117, 0.12);
+    border-color: rgba(224, 108, 117, 0.3);
+    animation: mic-pulse 1.4s ease-in-out infinite;
+  }
+  .mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .mic-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(224, 108, 117, 0.35); }
+    50% { box-shadow: 0 0 0 5px rgba(224, 108, 117, 0); }
+  }
+
+  /* ── Feature 6: Export menu ───────────────────────────── */
+  .export-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: var(--bonnie-shadow);
+    z-index: 50;
+    min-width: 180px;
+  }
+  .export-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--bonnie-ink-1);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    border-radius: 7px;
+    text-align: left;
+    transition: background 0.12s;
+  }
+  .export-menu-item:hover { background: var(--bonnie-surface-3); color: var(--bonnie-ink-0); }
+  .export-menu-item svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+
+  /* ── Toast notification ────────────────────────────────── */
+  .toast {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bonnie-surface-3);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 20px;
+    padding: 7px 16px;
+    font-size: 13px;
+    color: var(--bonnie-ink-1);
+    box-shadow: var(--bonnie-shadow-sm);
+    z-index: 10;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: toast-in 0.2s ease-out;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  /* ── Feature 9: Inline images ──────────────────────────── */
+  .bubble.assistant .md-image {
+    max-width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    border-radius: 8px;
+    border: 1px solid var(--bonnie-border);
+    background: var(--bonnie-surface-0);
+    display: block;
+    margin: 0.5em 0;
+  }
+
+  /* ── Feature 10: Light mode (system preference) ────────── */
+  @media (prefers-color-scheme: light) {
+    :host(:not([data-theme="dark"])) {
+      --bonnie-ink-0: #0F172A;
+      --bonnie-ink-1: #334155;
+      --bonnie-ink-2: #64748B;
+      --bonnie-ink-3: #94A3B8;
+      --bonnie-surface-0: #FFFFFF;
+      --bonnie-surface-1: #F8FAFC;
+      --bonnie-surface-2: #F1F5F9;
+      --bonnie-surface-3: #E2E8F0;
+      --bonnie-surface-4: #CBD5E1;
+      --bonnie-border: rgba(15, 23, 42, 0.08);
+      --bonnie-border-soft: rgba(15, 23, 42, 0.04);
+      --bonnie-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+      --bonnie-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+    }
+  }
+
+  /* Explicit light mode forced via toggle */
+  :host([data-theme="light"]) {
+    --bonnie-ink-0: #0F172A;
+    --bonnie-ink-1: #334155;
+    --bonnie-ink-2: #64748B;
+    --bonnie-ink-3: #94A3B8;
+    --bonnie-surface-0: #FFFFFF;
+    --bonnie-surface-1: #F8FAFC;
+    --bonnie-surface-2: #F1F5F9;
+    --bonnie-surface-3: #E2E8F0;
+    --bonnie-surface-4: #CBD5E1;
+    --bonnie-border: rgba(15, 23, 42, 0.08);
+    --bonnie-border-soft: rgba(15, 23, 42, 0.04);
+    --bonnie-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+    --bonnie-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  /* Explicit dark mode forced via toggle (overrides system light) */
+  :host([data-theme="dark"]) {
+    --bonnie-ink-0: #E6EDF3;
+    --bonnie-ink-1: #C7D1DC;
+    --bonnie-ink-2: #8B949E;
+    --bonnie-ink-3: #586069;
+    --bonnie-surface-0: #0D1117;
+    --bonnie-surface-1: color-mix(in srgb, #0D1117 80%, white 5%);
+    --bonnie-surface-2: color-mix(in srgb, #0D1117 65%, white 10%);
+    --bonnie-surface-3: color-mix(in srgb, #0D1117 50%, white 15%);
+    --bonnie-surface-4: color-mix(in srgb, #0D1117 35%, white 20%);
+    --bonnie-border: rgba(255, 255, 255, 0.08);
+    --bonnie-border-soft: rgba(255, 255, 255, 0.04);
+    --bonnie-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --bonnie-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Light mode hljs overrides */
+  :host([data-theme="light"]) .hljs-comment,
+  :host([data-theme="light"]) .hljs-quote,
+  :host([data-theme="light"]) .hljs-meta {
+    color: #9DA1A6;
+  }
 `
