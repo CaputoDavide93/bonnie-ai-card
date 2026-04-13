@@ -683,10 +683,11 @@ export const cardStyles = css`
   }
 
   .empty-heading {
-    font-size: 17px;
+    font-size: 22px;
     font-weight: 600;
     color: var(--bonnie-ink-0);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
     line-height: 1.3;
   }
 
