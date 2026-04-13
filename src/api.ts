@@ -126,3 +126,39 @@ export function streamUrl(baseUrl: string, token: string, turnId: string): strin
   url.searchParams.set('bearer', token)
   return url.toString()
 }
+
+/** Update the session title (used for auto-titling from first user message) */
+export async function updateSessionTitle(
+  baseUrl: string,
+  token: string,
+  sessionId: string,
+  title: string,
+): Promise<void> {
+  try {
+    await request<unknown>(`${baseUrl}/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ title }),
+    })
+  } catch {
+    // Best-effort — don't break the chat flow on title update failure
+  }
+}
+
+/** Respond to a permission request */
+export async function respondPermission(
+  baseUrl: string,
+  token: string,
+  turnId: string,
+  approved: boolean,
+): Promise<void> {
+  try {
+    await request<unknown>(`${baseUrl}/api/permission/${turnId}`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ approved }),
+    })
+  } catch {
+    // Best-effort
+  }
+}
