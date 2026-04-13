@@ -291,19 +291,19 @@ export const cardStyles = css`
   }
 
   .sidebar-section-label {
-    padding: 10px 12px 4px;
-    font-size: 10px;
+    padding: 14px 14px 6px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--bonnie-ink-3);
+    letter-spacing: 0.12em;
+    color: var(--bonnie-ink-2);
     flex-shrink: 0;
   }
 
   .session-list {
     flex: 1;
     overflow-y: auto;
-    padding: 4px 6px 10px;
+    padding: 2px 8px 12px;
     scrollbar-width: thin;
     scrollbar-color: var(--bonnie-surface-4) transparent;
   }
@@ -319,13 +319,13 @@ export const cardStyles = css`
 
   .session-item {
     position: relative;
-    padding: 9px 10px 9px 12px;
-    border-radius: 8px;
+    padding: 11px 10px 11px 12px;
+    border-radius: 10px;
     cursor: pointer;
     font-size: 13px;
     color: var(--bonnie-ink-2);
     transition: all 0.12s;
-    margin-bottom: 1px;
+    margin-bottom: 3px;
     border: 1px solid transparent;
     display: flex;
     align-items: center;
@@ -367,11 +367,13 @@ export const cardStyles = css`
   }
 
   .session-item-time {
-    font-size: 10.5px;
-    color: var(--bonnie-ink-3);
+    font-size: 11px;
+    color: var(--bonnie-ink-2);
+    opacity: 0.75;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-top: 1px;
   }
 
   .session-item .session-actions {
