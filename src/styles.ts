@@ -738,26 +738,32 @@ export const cardStyles = css`
     flex-wrap: wrap;
     gap: 6px;
     justify-content: center;
-    max-width: 320px;
+    max-width: 380px;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 8px;
   }
 
   .suggested-prompt-btn {
     background: var(--bonnie-surface-2);
     border: 1px solid var(--bonnie-border);
-    color: var(--bonnie-ink-2);
-    border-radius: 20px;
-    padding: 5px 12px;
-    font-size: 12px;
+    color: var(--bonnie-ink-1);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 500;
     font-family: inherit;
     cursor: pointer;
     transition: all 0.15s;
-    white-space: nowrap;
+    text-align: left;
+    line-height: 1.4;
   }
 
   .suggested-prompt-btn:hover {
     background: var(--bonnie-accent-soft);
-    border-color: var(--bonnie-accent-mid);
-    color: var(--bonnie-accent);
+    border-color: rgba(232, 160, 76, 0.35);
+    color: var(--bonnie-ink-0);
+    transform: translateY(-1px);
   }
 
   /* Keyboard shortcut help popover */
