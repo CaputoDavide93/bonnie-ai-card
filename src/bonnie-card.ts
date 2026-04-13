@@ -371,7 +371,22 @@ export class BonnieCard extends LitElement {
 
   private async _send(messageOverride?: string): Promise<void> {
     const text = (messageOverride ?? this.draft).trim()
-    if (!text || !this.sessionToken || !this.activeSessionId || this.streamingTurnId) return
+    if (!text || !this.sessionToken || this.streamingTurnId) return
+
+    // Auto-create a session on first message — matches ChatGPT/Claude.ai UX.
+    // User no longer needs to click "New conversation" first.
+    if (!this.activeSessionId) {
+      try {
+        const session = await createSession(this.config.backend_url, this.sessionToken, 'New conversation')
+        this.sessions = [session, ...this.sessions]
+        this.activeSessionId = session.id
+        this.activeSessionTitle = session.title
+        this.bubbles = []
+      } catch (err) {
+        this._showError('Could not start a new conversation.')
+        return
+      }
+    }
 
     this.draft = ''
     this._resetTextarea()
@@ -965,7 +980,9 @@ export class BonnieCard extends LitElement {
 
     const title = this.config?.title ?? 'Bonnie'
     const isStreaming = !!this.streamingTurnId
-    const canSend = !!this.draft.trim() && !isStreaming && !!this.activeSessionId
+    // Can send as long as there's text + auth + not already streaming.
+    // No active session? _send() auto-creates one.
+    const canSend = !!this.draft.trim() && !isStreaming && !!this.sessionToken
 
     return html`
       <ha-card>
@@ -1138,9 +1155,9 @@ export class BonnieCard extends LitElement {
                   <textarea
                     class="composer-textarea"
                     rows="1"
-                    placeholder=${isStreaming ? 'Bonnie is thinking…' : this.activeSessionId ? 'Message Bonnie… (Enter to send, Shift+Enter for newline)' : 'Select or start a conversation'}
+                    placeholder=${isStreaming ? 'Bonnie is thinking…' : 'Message Bonnie… (Enter to send, Shift+Enter for newline)'}
                     .value=${this.draft}
-                    ?disabled=${!this.activeSessionId || this.loading}
+                    ?disabled=${isStreaming || this.loading || !this.sessionToken}
                     @input=${this._onInput}
                     @keydown=${this._onKeydown}
                   ></textarea>
