@@ -143,27 +143,11 @@
 </head>
 <body>
   <div class="page">
-    <div class="toolbar">
-      <span class="toolbar-label">Viewport</span>
-      <button class="vp-btn active" data-vp="desktop" onclick="setViewport('desktop', this)">Desktop 1280×720</button>
-      <button class="vp-btn" data-vp="tablet" onclick="setViewport('tablet', this)">Tablet 768</button>
-      <button class="vp-btn" data-vp="narrow" onclick="setViewport('narrow', this)">Phone 375</button>
-      <span class="status" id="status">Connecting…</span>
-    </div>
-
     <div class="main">
       <div class="card-container" id="container">
         <bonnie-ai-card id="card"></bonnie-ai-card>
       </div>
     </div>
-  </div>
-
-  <div class="shortcuts">
-    <div><kbd>Cmd+N</kbd> New conversation</div>
-    <div><kbd>Cmd+K</kbd> Focus composer</div>
-    <div><kbd>Cmd+/</kbd> Toggle sidebar</div>
-    <div><kbd>Esc</kbd> Cancel stream</div>
-    <div><kbd>↑</kbd> Edit last message</div>
   </div>
 
   <script type="module">
