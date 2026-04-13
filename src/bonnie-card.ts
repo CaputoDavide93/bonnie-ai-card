@@ -1000,7 +1000,7 @@ export class BonnieCard extends LitElement {
                   : nothing}
               </div>
             </div>
-            <div class="status-dot ${isStreaming ? 'streaming' : ''}"></div>
+            ${isStreaming ? html`<div class="status-dot streaming" title="Streaming"></div>` : nothing}
             <div class="kb-help-wrap">
               <button
                 class="icon-btn"
