@@ -77,13 +77,34 @@ export interface SseResultEvent {
   type: 'result'
   subtype: 'success' | 'error'
   session_id: string
+  total_cost_usd?: number
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    cache_read_input_tokens?: number
+  }
+  duration_ms?: number
 }
 
-export type SseEvent = SseSystemEvent | SseAssistantEvent | SseUserEvent | SseResultEvent
+export interface SsePermissionEvent {
+  type: 'permission_request'
+  turn_id: string
+  tool_name: string
+  tool_description?: string
+}
+
+export type SseEvent = SseSystemEvent | SseAssistantEvent | SseUserEvent | SseResultEvent | SsePermissionEvent
 
 // ── UI bubble types ───────────────────────────────────────────────────────────
 
 export type BubbleRole = 'user' | 'assistant' | 'tool'
+
+export interface TurnStats {
+  inputTokens?: number
+  outputTokens?: number
+  costUsd?: number
+  durationMs?: number
+}
 
 export interface Bubble {
   id: string
@@ -99,6 +120,10 @@ export interface Bubble {
   error?: boolean
   /** Animation state */
   isNew?: boolean
+  /** Per-turn stats (populated on result event) */
+  stats?: TurnStats
+  /** Permission request pending for this assistant bubble's turn */
+  permissionRequest?: { turnId: string; toolName: string; toolDescription?: string }
 }
 
 // ── API rename session ────────────────────────────────────────────────────────
