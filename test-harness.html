@@ -170,8 +170,11 @@
 
       card.setConfig({
         type: 'custom:bonnie-ai-card',
-        backend_url: 'http://192.168.10.100:7788',
-        kiosk_token: 'REPLACE_WITH_YOUR_KIOSK_TOKEN',
+        // Local dev: set these via URL params, e.g.
+        //   ?backend=http://10.0.0.5:7788&token=your-token
+        // Or edit here for your own dev. Never commit real tokens.
+        backend_url: new URLSearchParams(location.search).get('backend') || 'http://localhost:7788',
+        kiosk_token: new URLSearchParams(location.search).get('token') || 'REPLACE_WITH_YOUR_KIOSK_TOKEN',
         title: 'Bonnie',
       })
 
