@@ -1896,6 +1896,138 @@ export const cardStyles = css`
     to { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
 
+  /* ── Feature 11: Image upload ──────────────────────────── */
+
+  /* Attach button — same base style as mic-btn */
+  .attach-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    color: var(--bonnie-ink-3);
+    padding: 0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .attach-btn:hover {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+  }
+  .attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .attach-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Attachment chip strip above the textarea */
+  .attach-strip {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 0 4px 8px;
+  }
+
+  .attach-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 6px 6px;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 12px;
+    font-size: 12px;
+    max-width: 200px;
+  }
+  .attach-chip img {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .attach-chip .filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--bonnie-ink-1);
+  }
+  .attach-chip button {
+    background: transparent;
+    border: 0;
+    color: var(--bonnie-ink-3);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.12s;
+  }
+  .attach-chip button:hover { color: var(--bonnie-ink-0); }
+  .attach-chip.uploading { opacity: 0.6; }
+  .attach-chip.error {
+    background: rgba(229, 115, 115, 0.1);
+    border-color: rgba(229, 115, 115, 0.3);
+    color: #ff8a80;
+  }
+  .chip-uploading-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--bonnie-border);
+    border-top-color: var(--bonnie-accent);
+    animation: chip-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes chip-spin { to { transform: rotate(360deg); } }
+
+  /* Attachments in user bubble */
+  .bubble-attachments {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .bubble-attachments img {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 8px;
+    cursor: zoom-in;
+    object-fit: cover;
+    border: 1px solid var(--bonnie-border);
+    display: block;
+  }
+
+  /* Lightbox overlay */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    cursor: zoom-out;
+  }
+  .lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    cursor: default;
+  }
+
   /* ── Feature 9: Inline images ──────────────────────────── */
   .bubble.assistant .md-image {
     max-width: 100%;

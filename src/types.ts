@@ -124,10 +124,32 @@ export interface Bubble {
   stats?: TurnStats
   /** Permission request pending for this assistant bubble's turn */
   permissionRequest?: { turnId: string; toolName: string; toolDescription?: string }
+  /** Uploaded image attachments on user bubbles */
+  attachments?: UploadedAttachment[]
 }
 
 // ── API rename session ────────────────────────────────────────────────────────
 
 export interface RenameSessionPayload {
   title: string
+}
+
+// ── Upload attachment ─────────────────────────────────────────────────────────
+
+export interface UploadResponse {
+  upload_id: string
+  filename: string
+  path: string
+  mime_type: string
+  size: number
+}
+
+export interface UploadedAttachment {
+  uploadId: string
+  filename: string
+  path: string        // /workspace/.bonnie-uploads/...
+  mimeType: string
+  size: number
+  /** URL.createObjectURL of the original File — for preview thumbnail */
+  localPreviewUrl: string
 }
