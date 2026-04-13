@@ -1086,10 +1086,6 @@ export class BonnieCard extends LitElement {
                           <div class="empty-icon-wrap">${svgBrandMarkLarge()}</div>
                           <div class="empty-heading">Ask Bonnie anything</div>
                           <div class="empty-subtext">Your AI home assistant, ready to help with automations, devices, and more.</div>
-                          <button class="start-btn" @click=${this._newSession}>
-                            ${svgPlus()}
-                            New conversation
-                          </button>
                           <div class="suggested-prompts">
                             ${['What\'s playing on my speakers?', 'Turn off the living room lights', 'Summarise today\'s calendar'].map((p) => html`
                               <button class="suggested-prompt-btn" @click=${() => this._startWithPrompt(p)}>${p}</button>
