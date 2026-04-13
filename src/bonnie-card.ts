@@ -16,7 +16,7 @@ import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
-import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats } from './types.js'
+import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment } from './types.js'
 import {
   ApiError,
   kioskExchange,
@@ -30,6 +30,8 @@ import {
   streamUrl,
   updateSessionTitle,
   respondPermission,
+  uploadImage,
+  deleteUpload,
 } from './api.js'
 import { renderMarkdown } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -126,6 +128,13 @@ export class BonnieCard extends LitElement {
   @state() private themeMode: 'auto' | 'dark' | 'light' = 'auto'
   // Permission requests
   @state() private activePermissionRequest: { turnId: string; toolName: string; toolDescription?: string } | null = null
+
+  // Feature 11: Image upload
+  @state() private pendingAttachments: UploadedAttachment[] = []
+  @state() private uploadingCount = 0
+  @state() private lightboxImage: string | null = null
+
+  private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
   private _resizeObserver: ResizeObserver | null = null
@@ -420,7 +429,15 @@ export class BonnieCard extends LitElement {
 
   private async _send(messageOverride?: string): Promise<void> {
     const text = (messageOverride ?? this.draft).trim()
-    if (!text || !this.sessionToken || this.streamingTurnId) return
+    const hasAttachments = this.pendingAttachments.length > 0
+    if (!text && !hasAttachments) return
+    if (!this.sessionToken || this.streamingTurnId) return
+
+    // Build the message with attachment refs appended
+    const attachmentRefs = this.pendingAttachments.map((a) => `[Attached image: ${a.path}]`).join('\n')
+    const messageWithAttachments = attachmentRefs
+      ? (text ? `${text}\n\n${attachmentRefs}` : attachmentRefs)
+      : text
 
     // Auto-create a session on first message — matches ChatGPT/Claude.ai UX.
     // User no longer needs to click "New conversation" first.
@@ -442,10 +459,20 @@ export class BonnieCard extends LitElement {
     this.charCount = 0
     this.showCharCount = false
     this.editingBubbleId = null
-    this._lastUserMessageText = text
+    this._lastUserMessageText = messageWithAttachments
+
+    // Snapshot attachments then clear pending list
+    const sentAttachments = this.pendingAttachments.slice()
+    this.pendingAttachments = []
 
     // Add user bubble immediately with animation
-    const userBubble: Bubble = { id: uid(), role: 'user', text, isNew: true }
+    const userBubble: Bubble = {
+      id: uid(),
+      role: 'user',
+      text: text || undefined,
+      isNew: true,
+      attachments: sentAttachments.length ? sentAttachments : undefined,
+    }
     this.bubbles = [...this.bubbles, userBubble]
     this._scrollBottom()
 
@@ -459,7 +486,7 @@ export class BonnieCard extends LitElement {
         this.config.backend_url,
         this.sessionToken,
         this.activeSessionId,
-        text,
+        messageWithAttachments,
         this.config.model,
       )
       this.streamingTurnId = turn_id
@@ -782,6 +809,114 @@ export class BonnieCard extends LitElement {
     await respondPermission(this.config.backend_url, this.sessionToken, req.turnId, approved)
   }
 
+  // ── Feature 11: Image upload ──────────────────────────────────────────────
+
+  private _ensureFileInput(): HTMLInputElement {
+    if (!this._fileInput) {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/png,image/jpeg,image/webp,image/gif'
+      input.multiple = true
+      input.style.display = 'none'
+      input.addEventListener('change', () => void this._onFilesSelected(input))
+      this.shadowRoot!.appendChild(input)
+      this._fileInput = input
+    }
+    return this._fileInput
+  }
+
+  private _openFilePicker(): void {
+    if (this.pendingAttachments.length >= 3) {
+      this._showToast('Max 3 attachments per message')
+      return
+    }
+    const input = this._ensureFileInput()
+    input.value = ''
+    input.click()
+  }
+
+  private async _onFilesSelected(input: HTMLInputElement): Promise<void> {
+    const files = Array.from(input.files ?? [])
+    if (!files.length) return
+
+    const remaining = 3 - this.pendingAttachments.length
+    if (files.length > remaining) {
+      this._showToast(`Max 3 attachments per message`)
+    }
+    const toUpload = files.slice(0, remaining)
+
+    for (const file of toUpload) {
+      await this._uploadFile(file)
+    }
+  }
+
+  private async _uploadFile(file: File): Promise<void> {
+    if (!this.sessionToken) return
+
+    const localPreviewUrl = URL.createObjectURL(file)
+    // Create a placeholder chip (uploading state)
+    const placeholderId = `uploading-${uid()}`
+    const placeholder: UploadedAttachment = {
+      uploadId: placeholderId,
+      filename: file.name,
+      path: '',
+      mimeType: file.type,
+      size: file.size,
+      localPreviewUrl,
+    }
+    this.pendingAttachments = [...this.pendingAttachments, placeholder]
+    this.uploadingCount++
+
+    try {
+      const res = await uploadImage(this.config.backend_url, this.sessionToken, file)
+      // Replace placeholder with real attachment
+      this.pendingAttachments = this.pendingAttachments.map((a) =>
+        a.uploadId === placeholderId
+          ? {
+              uploadId: res.upload_id,
+              filename: res.filename,
+              path: res.path,
+              mimeType: res.mime_type,
+              size: res.size,
+              localPreviewUrl,
+            }
+          : a,
+      )
+    } catch (err) {
+      // Mark as error, auto-remove after 4 s
+      this.pendingAttachments = this.pendingAttachments.map((a) =>
+        a.uploadId === placeholderId ? { ...a, uploadId: `error-${placeholderId}` } : a,
+      )
+      const errorId = `error-${placeholderId}`
+      setTimeout(() => {
+        this.pendingAttachments = this.pendingAttachments.filter((a) => a.uploadId !== errorId)
+        URL.revokeObjectURL(localPreviewUrl)
+      }, 4000)
+    } finally {
+      this.uploadingCount--
+    }
+  }
+
+  private _removeAttachment(uploadId: string): void {
+    const att = this.pendingAttachments.find((a) => a.uploadId === uploadId)
+    if (!att) return
+    // Revoke preview URL
+    URL.revokeObjectURL(att.localPreviewUrl)
+    this.pendingAttachments = this.pendingAttachments.filter((a) => a.uploadId !== uploadId)
+    // Best-effort delete from server (only for successfully uploaded files)
+    if (!uploadId.startsWith('uploading-') && !uploadId.startsWith('error-') && this.sessionToken) {
+      void deleteUpload(this.config.backend_url, this.sessionToken, uploadId)
+    }
+  }
+
+  private _openLightbox(url: string): void {
+    this.lightboxImage = url
+  }
+
+  private _closeLightbox(): void {
+    this.lightboxImage = null
+  }
+
   // Toast notification (used by voice input for errors)
   @state() private _toastMessage: string | null = null
   private _toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -941,6 +1076,8 @@ export class BonnieCard extends LitElement {
       if (!this.isWide) {
         this.sidebarOpen = !this.sidebarOpen
       }
+    } else if (e.key === 'Escape' && this.lightboxImage) {
+      this.lightboxImage = null
     } else if (e.key === 'Escape' && this.showKbHelp) {
       this.showKbHelp = false
     }
@@ -1043,8 +1180,20 @@ export class BonnieCard extends LitElement {
         </div>
 
         <div class=${classMap({ bubble: true, [b.role]: true, error: !!b.error })}>
+          ${isUser && b.attachments?.length ? html`
+            <div class="bubble-attachments">
+              ${b.attachments.map((a) => html`
+                <img
+                  src=${a.localPreviewUrl}
+                  alt=${a.filename}
+                  title=${a.filename}
+                  @click=${() => this._openLightbox(a.localPreviewUrl)}
+                />
+              `)}
+            </div>
+          ` : nothing}
           ${isUser
-            ? b.text
+            ? (b.text ? b.text : nothing)
             : html_}
         </div>
 
@@ -1260,9 +1409,9 @@ export class BonnieCard extends LitElement {
 
     const title = this.config?.title ?? 'Bonnie'
     const isStreaming = !!this.streamingTurnId
-    // Can send as long as there's text + auth + not already streaming.
+    // Can send as long as there's text (or pending attachments) + auth + not already streaming.
     // No active session? _send() auto-creates one.
-    const canSend = !!this.draft.trim() && !isStreaming && !!this.sessionToken
+    const canSend = (!!this.draft.trim() || this.pendingAttachments.length > 0) && !isStreaming && !!this.sessionToken
 
     return html`
       <ha-card>
@@ -1457,7 +1606,36 @@ export class BonnieCard extends LitElement {
 
               <!-- Composer -->
               <div class="composer-wrap">
+                <!-- Feature 11: Attachment chips (above textarea row) -->
+                ${this.pendingAttachments.length > 0 ? html`
+                  <div class="attach-strip">
+                    ${this.pendingAttachments.map((a) => {
+                      const isUploading = a.uploadId.startsWith('uploading-')
+                      const isError = a.uploadId.startsWith('error-')
+                      return html`
+                        <div class=${classMap({ 'attach-chip': true, uploading: isUploading, error: isError })}>
+                          <img src=${a.localPreviewUrl} alt="" />
+                          <span class="filename">${a.filename}</span>
+                          ${isUploading
+                            ? html`<span class="chip-uploading-indicator"></span>`
+                            : html`<button
+                                class="chip-remove"
+                                title="Remove attachment"
+                                @click=${() => this._removeAttachment(a.uploadId)}
+                              >×</button>`}
+                        </div>
+                      `
+                    })}
+                  </div>
+                ` : nothing}
                 <div class="composer-inner">
+                  <!-- Feature 11: Attach button -->
+                  <button
+                    class="attach-btn"
+                    title="Attach image"
+                    ?disabled=${isStreaming || this.uploadingCount > 0 || this.pendingAttachments.length >= 3}
+                    @click=${() => this._openFilePicker()}
+                  >${svgPaperclip()}</button>
                   <!-- Feature 5: Voice mic button -->
                   ${this.hasSpeechRecognition ? html`
                     <button
@@ -1499,6 +1677,12 @@ export class BonnieCard extends LitElement {
               <!-- Toast notification -->
               ${this._toastMessage ? html`
                 <div class="toast">${this._toastMessage}</div>
+              ` : nothing}
+              <!-- Feature 11: Lightbox -->
+              ${this.lightboxImage ? html`
+                <div class="lightbox" @click=${() => this._closeLightbox()}>
+                  <img src=${this.lightboxImage} alt="Attachment" @click=${(e: Event) => e.stopPropagation()} />
+                </div>
               ` : nothing}
             </div>
           </div>
@@ -1613,6 +1797,10 @@ function svgQuestion(): TemplateResult {
 
 function svgMic(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+}
+
+function svgPaperclip(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`
 }
 
 function svgDots(): TemplateResult {

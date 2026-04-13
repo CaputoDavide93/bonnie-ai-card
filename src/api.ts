@@ -1,4 +1,4 @@
-import type { AuthResponse, Session, SessionDetail } from './types.js'
+import type { AuthResponse, Session, SessionDetail, UploadResponse } from './types.js'
 
 export class ApiError extends Error {
   constructor(
@@ -142,6 +142,42 @@ export async function updateSessionTitle(
     })
   } catch {
     // Best-effort — don't break the chat flow on title update failure
+  }
+}
+
+/** Upload an image file; returns the server-assigned upload metadata */
+export async function uploadImage(
+  baseUrl: string,
+  token: string,
+  file: File,
+): Promise<UploadResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  // Do NOT set Content-Type — browser sets it with the multipart boundary
+  const headers = new Headers()
+  headers.set('Authorization', `Bearer ${token}`)
+  const res = await fetch(`${baseUrl}/api/uploads`, {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+  if (!res.ok) {
+    throw new ApiError(res.status, `HTTP ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<UploadResponse>
+}
+
+/** Delete an uploaded file (best-effort) */
+export async function deleteUpload(
+  baseUrl: string,
+  token: string,
+  uploadId: string,
+): Promise<void> {
+  try {
+    const headers = new Headers({ Authorization: `Bearer ${token}` })
+    await fetch(`${baseUrl}/api/uploads/${uploadId}`, { method: 'DELETE', headers })
+  } catch {
+    // Best-effort — ignore errors
   }
 }
 
