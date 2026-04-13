@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bonnie AI Card — Test Harness</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #0a0e14;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+      color: #e6edf3;
+    }
+
+    .page {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      background: #161b22;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #586069;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-right: 4px;
+    }
+
+    .vp-btn {
+      background: #1c2128;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #c7d1dc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.12s;
+      font-family: inherit;
+    }
+
+    .vp-btn:hover, .vp-btn.active {
+      background: rgba(232,160,76,0.15);
+      border-color: rgba(232,160,76,0.35);
+      color: #E8A04C;
+    }
+
+    .status {
+      margin-left: auto;
+      font-size: 11px;
+      color: #586069;
+    }
+
+    .status.connected { color: #3fb950; }
+    .status.error { color: #ff8a80; }
+
+    .main {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      overflow: auto;
+      background: linear-gradient(135deg, #0a0e14 0%, #0d1117 100%);
+    }
+
+    .card-container {
+      width: 100%;
+      max-width: 1200px;
+      transition: max-width 0.2s;
+    }
+
+    .card-container.narrow {
+      max-width: 375px;
+    }
+
+    .card-container.tablet {
+      max-width: 768px;
+    }
+
+    /* Fake ha-card styles */
+    ha-card {
+      display: block;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+      height: 680px;
+    }
+
+    /* Mock the custom element so the card's ha-card child renders properly */
+    bonnie-ai-card {
+      display: block;
+      height: 680px;
+    }
+
+    .card-container.narrow bonnie-ai-card,
+    .card-container.narrow ha-card {
+      height: 812px;
+    }
+
+    /* Keyboard shortcut legend */
+    .shortcuts {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: #161b22;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 11px;
+      color: #586069;
+      line-height: 1.7;
+    }
+
+    .shortcuts kbd {
+      background: #1c2128;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: inherit;
+      font-size: 10px;
+      color: #8b949e;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="toolbar">
+      <span class="toolbar-label">Viewport</span>
+      <button class="vp-btn active" data-vp="desktop" onclick="setViewport('desktop', this)">Desktop 1280×720</button>
+      <button class="vp-btn" data-vp="tablet" onclick="setViewport('tablet', this)">Tablet 768</button>
+      <button class="vp-btn" data-vp="narrow" onclick="setViewport('narrow', this)">Phone 375</button>
+      <span class="status" id="status">Connecting…</span>
+    </div>
+
+    <div class="main">
+      <div class="card-container" id="container">
+        <bonnie-ai-card id="card"></bonnie-ai-card>
+      </div>
+    </div>
+  </div>
+
+  <div class="shortcuts">
+    <div><kbd>Cmd+N</kbd> New conversation</div>
+    <div><kbd>Cmd+K</kbd> Focus composer</div>
+    <div><kbd>Cmd+/</kbd> Toggle sidebar</div>
+    <div><kbd>Esc</kbd> Cancel stream</div>
+    <div><kbd>↑</kbd> Edit last message</div>
+  </div>
+
+  <script type="module">
+    // Minimal ha-card polyfill for outside HA
+    if (!customElements.get('ha-card')) {
+      class HaCard extends HTMLElement {
+        connectedCallback() {
+          this.style.cssText = 'display:block;background:transparent;border-radius:0;'
+        }
+      }
+      customElements.define('ha-card', HaCard)
+    }
+
+    // Load the built card
+    import('./dist/bonnie-ai-card.js').then(async () => {
+      // Wait for the custom element to be defined before calling setConfig
+      await customElements.whenDefined('bonnie-ai-card')
+      const card = document.getElementById('card')
+      const status = document.getElementById('status')
+
+      card.setConfig({
+        type: 'custom:bonnie-ai-card',
+        backend_url: 'http://192.168.10.100:7788',
+        kiosk_token: 'REPLACE_WITH_YOUR_KIOSK_TOKEN',
+        title: 'Bonnie',
+      })
+
+      // Monitor auth state by checking for error class
+      const observer = new MutationObserver(() => {
+        const shadow = card.shadowRoot
+        if (!shadow) return
+        if (shadow.querySelector('.error-card')) {
+          status.textContent = 'Auth error'
+          status.className = 'status error'
+        } else if (shadow.querySelector('.empty-state, .messages, .bubble')) {
+          status.textContent = 'Connected'
+          status.className = 'status connected'
+        }
+      })
+      observer.observe(card, { childList: true, subtree: true })
+
+      setTimeout(() => {
+        const shadow = card.shadowRoot
+        if (shadow && !shadow.querySelector('.error-card')) {
+          status.textContent = 'Ready'
+          status.className = 'status connected'
+        }
+      }, 2000)
+
+    }).catch(err => {
+      document.getElementById('status').textContent = 'Load error: ' + err.message
+      document.getElementById('status').className = 'status error'
+      console.error(err)
+    })
+
+    window.setViewport = function(vp, btn) {
+      document.querySelectorAll('.vp-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      const container = document.getElementById('container')
+      container.className = 'card-container' + (vp !== 'desktop' ? ' ' + vp : '')
+    }
+  </script>
+</body>
+</html>

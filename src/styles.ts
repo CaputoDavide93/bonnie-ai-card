@@ -2,23 +2,39 @@ import { css } from 'lit'
 
 export const cardStyles = css`
   :host {
-    /* Self-contained palette. HA theme vars override these if present. */
-    --bonnie-accent: var(--bonnie-accent-override, #E8A04C);
-    --bonnie-accent-soft: rgba(232, 160, 76, 0.14);
-    --bonnie-accent-hover: #f0ae58;
-    --bonnie-ink-0: #E6EDF3;
-    --bonnie-ink-1: #C7D1DC;
-    --bonnie-ink-2: #8B949E;
-    --bonnie-ink-3: #6E7681;
-    --bonnie-surface-0: #0F1419;
-    --bonnie-surface-1: #161B22;
-    --bonnie-surface-2: #1F262E;
-    --bonnie-surface-3: #2A333D;
-    --bonnie-border: rgba(255, 255, 255, 0.08);
-    --bonnie-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    /* ── Accent: honour HA theme or fall back to Bonnie amber ── */
+    --bonnie-accent: var(--bonnie-accent-override, var(--accent-color, var(--primary-color, #E8A04C)));
+    --bonnie-accent-soft: color-mix(in srgb, var(--bonnie-accent) 12%, transparent);
+    --bonnie-accent-mid: color-mix(in srgb, var(--bonnie-accent) 25%, transparent);
+    --bonnie-accent-hover: color-mix(in srgb, var(--bonnie-accent) 85%, white);
+
+    /* ── Text: honour HA theme vars ─────────────────────────── */
+    --bonnie-ink-0: var(--primary-text-color, #E6EDF3);
+    --bonnie-ink-1: var(--primary-text-color, #C7D1DC);
+    --bonnie-ink-2: var(--secondary-text-color, #8B949E);
+    --bonnie-ink-3: var(--disabled-text-color, #586069);
+
+    /* ── Surfaces: honour HA card background ────────────────── */
+    --bonnie-surface-0: var(--ha-card-background, var(--card-background-color, #0D1117));
+    --bonnie-surface-1: color-mix(in srgb, var(--bonnie-surface-0) 80%, white 5%);
+    --bonnie-surface-2: color-mix(in srgb, var(--bonnie-surface-0) 65%, white 10%);
+    --bonnie-surface-3: color-mix(in srgb, var(--bonnie-surface-0) 50%, white 15%);
+    --bonnie-surface-4: color-mix(in srgb, var(--bonnie-surface-0) 35%, white 20%);
+
+    /* ── Borders ─────────────────────────────────────────────── */
+    --bonnie-border: var(--divider-color, rgba(255, 255, 255, 0.08));
+    --bonnie-border-soft: var(--divider-color, rgba(255, 255, 255, 0.04));
+
+    --bonnie-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --bonnie-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --bonnie-radius: var(--ha-card-border-radius, 16px);
+    --bonnie-radius-sm: 10px;
     display: block;
-    font-family: var(--paper-font-body1_-_font-family, 'Inter', system-ui, sans-serif);
+    font-family: var(--paper-font-body1_-_font-family, 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif);
     color: var(--bonnie-ink-0);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
 
   /* ── Outer card shell ─────────────────────────────────── */
@@ -26,7 +42,7 @@ export const cardStyles = css`
     display: flex;
     flex-direction: column;
     background: var(--bonnie-surface-0);
-    border-radius: 16px;
+    border-radius: var(--bonnie-radius);
     overflow: hidden;
     height: var(--bonnie-card-height, 100%);
     min-height: 420px;
@@ -37,61 +53,124 @@ export const cardStyles = css`
   .header {
     display: flex;
     align-items: center;
-    padding: 14px 16px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--bonnie-border);
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
     background: var(--bonnie-surface-1);
+    min-height: 52px;
+  }
+
+  .header-brand {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .brand-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--bonnie-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(232, 160, 76, 0.35);
+  }
+
+  .brand-logo svg {
+    width: 16px;
+    height: 16px;
+    fill: #0D1117;
+    stroke: none;
   }
 
   .header-title {
-    flex: 1;
     font-size: 15px;
     font-weight: 600;
     color: var(--bonnie-ink-0);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+  }
+
+  .header-subtitle {
+    font-size: 11px;
+    color: var(--bonnie-ink-3);
+    font-weight: 400;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #3fb950;
+    flex-shrink: 0;
+  }
+
+  .status-dot.streaming {
+    background: var(--bonnie-accent);
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
   }
 
   .icon-btn {
-    background: var(--bonnie-surface-3);
-    border: 1px solid var(--bonnie-border);
+    background: transparent;
+    border: 1px solid transparent;
     cursor: pointer;
-    color: var(--bonnie-ink-1);
+    color: var(--bonnie-ink-2);
     padding: 0;
-    border-radius: 10px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     transition: all 0.15s ease;
     flex-shrink: 0;
   }
 
   .icon-btn:hover {
-    background: var(--bonnie-surface-2);
-    border-color: rgba(232, 160, 76, 0.3);
+    background: var(--bonnie-surface-3);
+    border-color: var(--bonnie-border);
+    color: var(--bonnie-ink-0);
+  }
+
+  .icon-btn.accent {
+    background: var(--bonnie-accent-soft);
+    border-color: var(--bonnie-accent-mid);
     color: var(--bonnie-accent);
   }
 
-  .icon-btn.primary {
-    background: var(--bonnie-accent);
-    color: #0F1419;
-    border-color: transparent;
-    box-shadow: 0 2px 8px rgba(232, 160, 76, 0.35);
-  }
-
-  .icon-btn.primary:hover {
-    background: var(--bonnie-accent-hover);
-    color: #0F1419;
+  .icon-btn.accent:hover {
+    background: var(--bonnie-accent-mid);
+    color: var(--bonnie-accent-hover);
   }
 
   .icon-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -109,28 +188,114 @@ export const cardStyles = css`
 
   /* ── Sidebar ─────────────────────────────────────────── */
   .sidebar {
-    width: 232px;
+    width: 240px;
     flex-shrink: 0;
     border-right: 1px solid var(--bonnie-border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: width 0.2s, opacity 0.2s;
     background: var(--bonnie-surface-1);
   }
 
-  .sidebar.hidden {
-    width: 0;
-    opacity: 0;
-    pointer-events: none;
+  .sidebar-top {
+    padding: 12px 10px 8px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--bonnie-border-soft);
   }
 
-  .sidebar-header {
-    padding: 12px 14px 8px;
-    font-size: 11px;
+  .new-chat-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: var(--bonnie-accent);
+    color: #0D1117;
+    border: none;
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    box-shadow: 0 2px 10px rgba(232, 160, 76, 0.3);
+  }
+
+  .new-chat-btn:hover {
+    background: var(--bonnie-accent-hover);
+    box-shadow: 0 4px 16px rgba(232, 160, 76, 0.45);
+    transform: translateY(-1px);
+  }
+
+  .new-chat-btn svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+
+  .search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 9px;
+    width: 13px;
+    height: 13px;
+    color: var(--bonnie-ink-3);
+    pointer-events: none;
+    flex-shrink: 0;
+  }
+
+  .search-icon svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .search-input {
+    width: 100%;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 8px;
+    padding: 7px 10px 7px 30px;
+    font-size: 12.5px;
+    font-family: inherit;
+    color: var(--bonnie-ink-0);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+  }
+
+  .search-input::placeholder {
+    color: var(--bonnie-ink-3);
+  }
+
+  .search-input:focus {
+    border-color: rgba(232, 160, 76, 0.35);
+    box-shadow: 0 0 0 2px rgba(232, 160, 76, 0.1);
+  }
+
+  .sidebar-section-label {
+    padding: 10px 12px 4px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: var(--bonnie-ink-3);
     flex-shrink: 0;
   }
@@ -138,21 +303,34 @@ export const cardStyles = css`
   .session-list {
     flex: 1;
     overflow-y: auto;
-    padding: 0 8px 8px;
+    padding: 4px 6px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bonnie-surface-4) transparent;
+  }
+
+  .session-list::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .session-list::-webkit-scrollbar-thumb {
+    background: var(--bonnie-surface-4);
+    border-radius: 2px;
   }
 
   .session-item {
-    padding: 10px 12px;
-    border-radius: 10px;
+    position: relative;
+    padding: 9px 10px 9px 12px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 13px;
-    color: var(--bonnie-ink-1);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: all 0.15s;
-    margin-bottom: 2px;
+    color: var(--bonnie-ink-2);
+    transition: all 0.12s;
+    margin-bottom: 1px;
     border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
   }
 
   .session-item:hover {
@@ -162,16 +340,183 @@ export const cardStyles = css`
 
   .session-item.active {
     background: var(--bonnie-accent-soft);
-    color: var(--bonnie-accent);
-    border-color: rgba(232, 160, 76, 0.2);
+    color: var(--bonnie-ink-0);
+    border-color: var(--bonnie-accent-mid);
+  }
+
+  .session-item-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .session-item-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
     font-weight: 500;
+    color: inherit;
+  }
+
+  .session-item.active .session-item-title {
+    color: var(--bonnie-ink-0);
+  }
+
+  .session-item-time {
+    font-size: 10.5px;
+    color: var(--bonnie-ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .session-item .session-actions {
+    display: none;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .session-item:hover .session-actions,
+  .session-item.active .session-actions {
+    display: flex;
+  }
+
+  .session-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--bonnie-ink-3);
+    padding: 3px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+    width: 22px;
+    height: 22px;
+  }
+
+  .session-action-btn:hover {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+  }
+
+  .session-action-btn.delete:hover {
+    background: rgba(229, 115, 115, 0.2);
+    color: #ff8a80;
+  }
+
+  .session-action-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Inline rename input */
+  .session-rename-input {
+    width: 100%;
+    background: var(--bonnie-surface-3);
+    border: 1px solid rgba(232, 160, 76, 0.4);
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--bonnie-ink-0);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(232, 160, 76, 0.1);
   }
 
   .session-empty {
-    padding: 14px 12px;
+    padding: 20px 14px;
     font-size: 12px;
     color: var(--bonnie-ink-3);
     text-align: center;
+    line-height: 1.5;
+  }
+
+  /* Confirm dialog overlay */
+  .confirm-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 20px;
+  }
+
+  .confirm-card {
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 14px;
+    padding: 20px;
+    max-width: 280px;
+    width: 100%;
+    box-shadow: var(--bonnie-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .confirm-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bonnie-ink-0);
+  }
+
+  .confirm-body {
+    font-size: 13px;
+    color: var(--bonnie-ink-2);
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .confirm-btn {
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.12s;
+  }
+
+  .confirm-btn.cancel {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+    border: 1px solid var(--bonnie-border);
+  }
+
+  .confirm-btn.cancel:hover {
+    background: var(--bonnie-surface-4);
+    color: var(--bonnie-ink-0);
+  }
+
+  .confirm-btn.danger {
+    background: rgba(229, 115, 115, 0.2);
+    color: #ff8a80;
+    border: 1px solid rgba(229, 115, 115, 0.3);
+  }
+
+  .confirm-btn.danger:hover {
+    background: rgba(229, 115, 115, 0.3);
   }
 
   /* ── Narrow-mode sidebar overlay ─────────────────────── */
@@ -180,7 +525,8 @@ export const cardStyles = css`
     position: absolute;
     inset: 0;
     z-index: 10;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
   }
 
   .sidebar-overlay.visible {
@@ -213,17 +559,16 @@ export const cardStyles = css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 14px 10px;
+    padding: 14px 12px 10px;
     border-bottom: 1px solid var(--bonnie-border);
     flex-shrink: 0;
   }
 
   .drawer-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--bonnie-ink-3);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bonnie-ink-1);
+    letter-spacing: -0.01em;
   }
 
   /* ── Chat pane ───────────────────────────────────────── */
@@ -234,25 +579,75 @@ export const cardStyles = css`
     min-width: 0;
     overflow: hidden;
     background: var(--bonnie-surface-0);
+    position: relative;
   }
 
   /* ── Messages ────────────────────────────────────────── */
   .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 16px 16px;
+    padding: 20px 16px 12px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 4px;
     min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bonnie-surface-4) transparent;
   }
 
   .messages::-webkit-scrollbar {
-    width: 8px;
+    width: 5px;
   }
+
   .messages::-webkit-scrollbar-thumb {
+    background: var(--bonnie-surface-4);
+    border-radius: 3px;
+  }
+
+  /* Scroll-to-bottom button */
+  .scroll-to-bottom {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
     background: var(--bonnie-surface-3);
-    border-radius: 4px;
+    border: 1px solid var(--bonnie-border);
+    color: var(--bonnie-ink-1);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s ease;
+    box-shadow: var(--bonnie-shadow-sm);
+    z-index: 5;
+    white-space: nowrap;
+  }
+
+  .scroll-to-bottom.visible {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .scroll-to-bottom:hover {
+    background: var(--bonnie-surface-4);
+    color: var(--bonnie-ink-0);
+  }
+
+  .scroll-to-bottom svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   /* Empty state */
@@ -262,46 +657,52 @@ export const cardStyles = css`
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 14px;
+    gap: 16px;
     color: var(--bonnie-ink-2);
     text-align: center;
-    padding: 32px;
+    padding: 32px 24px;
   }
 
-  .empty-icon {
-    width: 64px;
-    height: 64px;
-    color: var(--bonnie-accent);
+  .empty-icon-wrap {
+    width: 72px;
+    height: 72px;
+    border-radius: 24px;
     background: var(--bonnie-accent-soft);
-    border: 1px solid rgba(232, 160, 76, 0.22);
-    border-radius: 20px;
+    border: 1px solid var(--bonnie-accent-mid);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 20px rgba(232, 160, 76, 0.1);
+    box-shadow: 0 4px 24px rgba(232, 160, 76, 0.12);
   }
 
-  .empty-icon svg {
-    width: 30px;
-    height: 30px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+  .empty-icon-wrap svg {
+    width: 32px;
+    height: 32px;
+    fill: var(--bonnie-accent);
+    stroke: none;
   }
 
-  .empty-text {
-    font-size: 14px;
-    color: var(--bonnie-ink-2);
+  .empty-heading {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--bonnie-ink-0);
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+  }
+
+  .empty-subtext {
+    font-size: 13px;
+    color: var(--bonnie-ink-3);
+    line-height: 1.5;
+    max-width: 240px;
   }
 
   .start-btn {
     background: var(--bonnie-accent);
-    color: #0F1419;
+    color: #0D1117;
     border: none;
-    border-radius: 14px;
-    padding: 12px 22px;
+    border-radius: 12px;
+    padding: 11px 24px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -311,18 +712,171 @@ export const cardStyles = css`
     align-items: center;
     gap: 8px;
     box-shadow: 0 4px 18px rgba(232, 160, 76, 0.35);
+    letter-spacing: -0.01em;
   }
 
   .start-btn:hover {
     background: var(--bonnie-accent-hover);
     transform: translateY(-1px);
-    box-shadow: 0 6px 22px rgba(232, 160, 76, 0.5);
+    box-shadow: 0 6px 24px rgba(232, 160, 76, 0.5);
+  }
+
+  .start-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Suggested prompt pills */
+  .suggested-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    max-width: 320px;
+  }
+
+  .suggested-prompt-btn {
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    color: var(--bonnie-ink-2);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .suggested-prompt-btn:hover {
+    background: var(--bonnie-accent-soft);
+    border-color: var(--bonnie-accent-mid);
+    color: var(--bonnie-accent);
+  }
+
+  /* Keyboard shortcut help popover */
+  .kb-help-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .kb-help-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12px;
+    box-shadow: var(--bonnie-shadow);
+    z-index: 50;
+    min-width: 210px;
+    display: none;
+  }
+
+  .kb-help-popover.open {
+    display: block;
+  }
+
+  .kb-help-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    color: var(--bonnie-ink-2);
+  }
+
+  .kb-help-row:not(:last-child) {
+    border-bottom: 1px solid var(--bonnie-border-soft);
+    margin-bottom: 3px;
+    padding-bottom: 6px;
+  }
+
+  .kb-help-label {
+    font-size: 11.5px;
+    color: var(--bonnie-ink-2);
+  }
+
+  .kb-shortcuts {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .kb-key {
+    background: var(--bonnie-surface-3);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 10.5px;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    color: var(--bonnie-ink-1);
+  }
+
+  /* Skeleton loading lines */
+  .skeleton-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 16px;
+  }
+
+  .skeleton-msg {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .skeleton-msg.user {
+    flex-direction: row-reverse;
+  }
+
+  .skeleton-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bonnie-surface-3);
+    flex-shrink: 0;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  .skeleton-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    flex: 1;
+    max-width: 70%;
+  }
+
+  .skeleton-msg.user .skeleton-lines {
+    align-items: flex-end;
+  }
+
+  .skeleton-line {
+    height: 14px;
+    border-radius: 7px;
+    background: var(--bonnie-surface-3);
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
   }
 
   /* ── Bubbles ─────────────────────────────────────────── */
   .bubble-row {
     display: flex;
     max-width: 100%;
+    padding: 2px 0;
+    position: relative;
   }
 
   .bubble-row.user {
@@ -334,40 +888,190 @@ export const cardStyles = css`
     justify-content: flex-start;
   }
 
+  /* Bubble entry animation */
+  @keyframes bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .bubble-row.new-msg {
+    animation: bubble-in 0.2s ease-out forwards;
+  }
+
+  /* Message actions hover bar */
+  .msg-actions {
+    position: absolute;
+    top: -2px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 8px;
+    padding: 2px;
+    box-shadow: var(--bonnie-shadow-sm);
+    z-index: 2;
+  }
+
+  .bubble-row.user .msg-actions {
+    right: 0;
+    transform: translateY(-100%);
+  }
+
+  .bubble-row.assistant .msg-actions {
+    left: 0;
+    transform: translateY(-100%);
+  }
+
+  .bubble-row:hover .msg-actions {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .msg-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--bonnie-ink-3);
+    padding: 4px 6px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+
+  .msg-action-btn:hover {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-0);
+  }
+
+  .msg-action-btn.copied {
+    color: #3fb950;
+  }
+
+  .msg-action-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
   .bubble {
     max-width: 78%;
-    padding: 11px 16px;
+    padding: 10px 15px;
     border-radius: 18px;
     font-size: 14px;
-    line-height: 1.55;
+    line-height: 1.6;
     word-break: break-word;
     overflow-wrap: anywhere;
+    position: relative;
   }
 
   .bubble.user {
     background: var(--bonnie-accent);
-    color: #0F1419;
-    border-bottom-right-radius: 6px;
+    color: #0D1117;
+    border-bottom-right-radius: 5px;
     font-weight: 500;
+    letter-spacing: -0.01em;
+    box-shadow: 0 2px 10px rgba(232, 160, 76, 0.25);
   }
 
   .bubble.assistant {
     background: var(--bonnie-surface-2);
     color: var(--bonnie-ink-0);
-    border-bottom-left-radius: 6px;
+    border-bottom-left-radius: 5px;
     border: 1px solid var(--bonnie-border);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--bonnie-shadow-sm);
+    max-width: 90%;
   }
 
   .bubble.error {
-    background: rgba(229, 115, 115, 0.15);
+    background: rgba(229, 115, 115, 0.1);
     color: #ff8a80;
-    border: 1px solid rgba(229, 115, 115, 0.3);
+    border: 1px solid rgba(229, 115, 115, 0.25);
+  }
+
+  /* Edit user message */
+  .edit-bubble-wrap {
+    max-width: 78%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .edit-bubble-textarea {
+    width: 100%;
+    background: var(--bonnie-surface-2);
+    border: 1.5px solid rgba(232, 160, 76, 0.45);
+    border-radius: 14px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--bonnie-ink-0);
+    resize: none;
+    outline: none;
+    line-height: 1.6;
+    box-shadow: 0 0 0 3px rgba(232, 160, 76, 0.1);
+    min-height: 60px;
+    box-sizing: border-box;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .edit-cancel-btn, .edit-send-btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.12s;
+  }
+
+  .edit-cancel-btn {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+    border: 1px solid var(--bonnie-border);
+  }
+
+  .edit-cancel-btn:hover {
+    background: var(--bonnie-surface-4);
+  }
+
+  .edit-send-btn {
+    background: var(--bonnie-accent);
+    color: #0D1117;
+    font-weight: 600;
+  }
+
+  .edit-send-btn:hover {
+    background: var(--bonnie-accent-hover);
   }
 
   /* Markdown inside assistant bubbles */
   .bubble.assistant p {
-    margin: 0 0 0.5em;
+    margin: 0 0 0.6em;
   }
 
   .bubble.assistant p:last-child {
@@ -375,40 +1079,111 @@ export const cardStyles = css`
   }
 
   .bubble.assistant code {
-    font-family: 'JetBrains Mono', Menlo, monospace;
-    font-size: 0.85em;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 0.83em;
     background: var(--bonnie-surface-0);
-    padding: 0.12em 0.4em;
-    border-radius: 4px;
+    padding: 0.13em 0.45em;
+    border-radius: 5px;
     color: var(--bonnie-accent);
+    border: 1px solid var(--bonnie-border);
+  }
+
+  /* Code block wrap */
+  .bubble.assistant .code-block-wrap {
+    background: var(--bonnie-surface-0);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 0.6em 0;
+    font-size: 12.5px;
+  }
+
+  .bubble.assistant .code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    background: var(--bonnie-surface-1);
+    border-bottom: 1px solid var(--bonnie-border);
+    min-height: 32px;
+  }
+
+  .bubble.assistant .code-lang {
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 11px;
+    color: var(--bonnie-ink-3);
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+  }
+
+  .bubble.assistant .code-copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--bonnie-ink-3);
+    font-size: 11px;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    transition: all 0.12s;
+  }
+
+  .bubble.assistant .code-copy-btn:hover {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-0);
+  }
+
+  .bubble.assistant .code-copy-btn.copied {
+    color: #3fb950;
+  }
+
+  .bubble.assistant .code-copy-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .bubble.assistant pre {
-    background: var(--bonnie-surface-0);
-    border: 1px solid var(--bonnie-border);
-    border-radius: 10px;
-    padding: 10px 12px;
+    margin: 0;
+    padding: 12px 14px;
     overflow-x: auto;
-    font-size: 12.5px;
-    margin: 0.5em 0;
+    background: transparent;
   }
 
   .bubble.assistant pre code {
     background: none;
     padding: 0;
+    border: none;
     border-radius: 0;
     font-size: 1em;
     color: var(--bonnie-ink-0);
+    font-family: 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
   }
 
   .bubble.assistant ul,
   .bubble.assistant ol {
-    padding-left: 1.4em;
+    padding-left: 1.5em;
     margin: 0.4em 0;
+  }
+
+  .bubble.assistant li {
+    margin-bottom: 0.25em;
   }
 
   .bubble.assistant a {
     color: var(--bonnie-accent);
+    text-decoration: none;
+  }
+
+  .bubble.assistant a:hover {
+    text-decoration: underline;
   }
 
   .bubble.assistant strong {
@@ -416,37 +1191,99 @@ export const cardStyles = css`
     color: var(--bonnie-ink-0);
   }
 
+  .bubble.assistant em {
+    font-style: italic;
+    color: var(--bonnie-ink-1);
+  }
+
+  .bubble.assistant h1, .bubble.assistant h2, .bubble.assistant h3,
+  .bubble.assistant h4, .bubble.assistant h5, .bubble.assistant h6 {
+    font-weight: 600;
+    color: var(--bonnie-ink-0);
+    margin: 0.8em 0 0.4em;
+    line-height: 1.3;
+  }
+
+  .bubble.assistant h1 { font-size: 1.2em; }
+  .bubble.assistant h2 { font-size: 1.1em; }
+  .bubble.assistant h3 { font-size: 1em; }
+
+  .bubble.assistant .md-blockquote {
+    border-left: 3px solid var(--bonnie-accent-mid);
+    padding: 4px 12px;
+    margin: 0.5em 0;
+    color: var(--bonnie-ink-2);
+    background: var(--bonnie-accent-soft);
+    border-radius: 0 6px 6px 0;
+  }
+
+  .bubble.assistant .md-table-wrap {
+    overflow-x: auto;
+    margin: 0.5em 0;
+  }
+
+  .bubble.assistant .md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  .bubble.assistant .md-table th {
+    background: var(--bonnie-surface-1);
+    border: 1px solid var(--bonnie-border);
+    padding: 7px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--bonnie-ink-1);
+  }
+
+  .bubble.assistant .md-table td {
+    border: 1px solid var(--bonnie-border);
+    padding: 6px 12px;
+    color: var(--bonnie-ink-1);
+  }
+
+  .bubble.assistant .md-table tr:hover td {
+    background: var(--bonnie-surface-1);
+  }
+
+  .bubble.assistant hr {
+    border: none;
+    border-top: 1px solid var(--bonnie-border);
+    margin: 0.8em 0;
+  }
+
   /* ── Tool bubble ─────────────────────────────────────── */
   .tool-bubble {
-    max-width: 85%;
-    background: var(--bonnie-surface-2);
+    max-width: 88%;
+    background: var(--bonnie-surface-1);
     border: 1px solid var(--bonnie-border);
-    border-radius: 14px;
+    border-radius: 12px;
     font-size: 12.5px;
     overflow: hidden;
     color: var(--bonnie-ink-1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--bonnie-shadow-sm);
   }
 
   .tool-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
+    padding: 9px 12px;
     cursor: pointer;
     user-select: none;
-    transition: background 0.15s;
+    transition: background 0.12s;
   }
 
   .tool-header:hover {
-    background: var(--bonnie-surface-3);
+    background: var(--bonnie-surface-2);
   }
 
   .tool-icon {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
-    border-radius: 6px;
+    border-radius: 5px;
     background: var(--bonnie-accent-soft);
     color: var(--bonnie-accent);
     display: flex;
@@ -455,8 +1292,8 @@ export const cardStyles = css`
   }
 
   .tool-icon svg {
-    width: 12px;
-    height: 12px;
+    width: 11px;
+    height: 11px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2.2;
@@ -467,16 +1304,34 @@ export const cardStyles = css`
   .tool-name {
     flex: 1;
     font-weight: 600;
-    font-size: 12.5px;
-    color: var(--bonnie-ink-0);
-    font-family: 'JetBrains Mono', Menlo, monospace;
+    font-size: 12px;
+    color: var(--bonnie-ink-1);
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tool-status {
+    font-size: 10.5px;
+    color: var(--bonnie-ink-3);
+    background: var(--bonnie-surface-3);
+    padding: 2px 7px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .tool-status.done {
+    color: #3fb950;
+    background: rgba(63, 185, 80, 0.1);
   }
 
   .tool-chevron {
-    width: 14px;
-    height: 14px;
-    color: var(--bonnie-ink-2);
+    width: 13px;
+    height: 13px;
+    color: var(--bonnie-ink-3);
     transition: transform 0.15s;
+    flex-shrink: 0;
   }
 
   .tool-chevron svg {
@@ -494,27 +1349,31 @@ export const cardStyles = css`
   }
 
   .tool-body {
-    padding: 10px 14px 12px;
-    border-top: 1px solid var(--bonnie-border);
-    display: none;
+    padding: 0 12px;
+    border-top: 0px solid var(--bonnie-border-soft);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease, border-top-width 0.2s ease;
   }
 
   .tool-body.visible {
-    display: block;
+    max-height: 600px;
+    padding: 10px 12px 12px;
+    border-top-width: 1px;
   }
 
   .tool-section-label {
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: var(--bonnie-ink-3);
-    margin: 0 0 6px;
+    margin: 0 0 5px;
   }
 
   .tool-pre {
-    font-family: 'JetBrains Mono', Menlo, monospace;
-    font-size: 11.5px;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 11px;
     background: var(--bonnie-surface-0);
     border: 1px solid var(--bonnie-border);
     border-radius: 8px;
@@ -525,10 +1384,28 @@ export const cardStyles = css`
     color: var(--bonnie-ink-1);
     margin: 0 0 10px;
     line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
   }
 
   .tool-pre:last-child {
     margin-bottom: 0;
+  }
+
+  .show-more-btn {
+    background: none;
+    border: none;
+    color: var(--bonnie-accent);
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 4px 0;
+    display: block;
+    transition: opacity 0.12s;
+  }
+
+  .show-more-btn:hover {
+    opacity: 0.8;
   }
 
   /* Streaming cursor */
@@ -538,58 +1415,104 @@ export const cardStyles = css`
     height: 1em;
     background: var(--bonnie-accent);
     vertical-align: text-bottom;
-    animation: blink 1s step-end infinite;
-    margin-left: 2px;
+    animation: blink 0.9s step-end infinite;
+    margin-left: 1px;
     border-radius: 1px;
   }
 
   @keyframes blink {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0;
-    }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
   }
 
-  /* ── Error banner ────────────────────────────────────── */
-  .error-banner {
-    background: rgba(229, 115, 115, 0.15);
-    color: #ff8a80;
-    border-bottom: 1px solid rgba(229, 115, 115, 0.3);
-    padding: 10px 16px;
+  /* ── Error card (inline) ──────────────────────────────── */
+  .error-card {
+    background: rgba(229, 115, 115, 0.08);
+    border: 1px solid rgba(229, 115, 115, 0.22);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 8px 0;
     font-size: 13px;
-    text-align: center;
+  }
+
+  .error-card-icon {
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
+    color: #ff8a80;
+    margin-top: 1px;
+  }
+
+  .error-card-icon svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .error-card-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .error-card-title {
+    font-weight: 600;
+    color: #ff8a80;
+    margin-bottom: 4px;
+  }
+
+  .error-card-text {
+    color: rgba(255, 138, 128, 0.8);
+    font-size: 12.5px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .error-retry-btn {
+    background: rgba(229, 115, 115, 0.15);
+    border: 1px solid rgba(229, 115, 115, 0.3);
+    border-radius: 7px;
+    color: #ff8a80;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 5px 12px;
+    margin-top: 8px;
+    transition: all 0.12s;
+  }
+
+  .error-retry-btn:hover {
+    background: rgba(229, 115, 115, 0.22);
   }
 
   /* ── Composer ────────────────────────────────────────── */
-  .composer {
-    display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    padding: 12px 14px 14px;
-    border-top: 1px solid var(--bonnie-border);
+  .composer-wrap {
     flex-shrink: 0;
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--bonnie-border);
     background: var(--bonnie-surface-0);
   }
 
-  .composer-wrap {
-    flex: 1;
+  .composer-inner {
     display: flex;
     align-items: flex-end;
-    gap: 10px;
-    background: var(--bonnie-surface-2);
-    border: 1px solid var(--bonnie-border);
-    border-radius: 20px;
+    gap: 8px;
+    background: var(--bonnie-surface-1);
+    border: 1.5px solid var(--bonnie-border);
+    border-radius: 16px;
     padding: 10px 10px 10px 16px;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
 
-  .composer-wrap:focus-within {
-    border-color: rgba(232, 160, 76, 0.4);
-    box-shadow: 0 0 0 1px rgba(232, 160, 76, 0.15);
+  .composer-inner:focus-within {
+    border-color: rgba(232, 160, 76, 0.35);
+    box-shadow: 0 0 0 3px rgba(232, 160, 76, 0.08);
   }
 
   .composer-textarea {
@@ -597,7 +1520,7 @@ export const cardStyles = css`
     resize: none;
     background: transparent;
     border: none;
-    padding: 2px 0;
+    padding: 0;
     font-size: 14px;
     font-family: inherit;
     color: var(--bonnie-ink-0);
@@ -613,12 +1536,44 @@ export const cardStyles = css`
     color: var(--bonnie-ink-3);
   }
 
+  .composer-textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 0;
+    min-height: 0;
+  }
+
+  .char-count {
+    font-size: 11px;
+    color: var(--bonnie-ink-3);
+    transition: color 0.15s;
+  }
+
+  .char-count.warning {
+    color: #f9a825;
+  }
+
+  .char-count.danger {
+    color: #ff8a80;
+  }
+
+  .composer-hint {
+    font-size: 11px;
+    color: var(--bonnie-ink-3);
+  }
+
   .send-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: var(--bonnie-accent);
-    color: #0F1419;
+    color: #0D1117;
     border: none;
     cursor: pointer;
     display: flex;
@@ -626,7 +1581,7 @@ export const cardStyles = css`
     justify-content: center;
     flex-shrink: 0;
     transition: all 0.15s;
-    box-shadow: 0 2px 8px rgba(232, 160, 76, 0.35);
+    box-shadow: 0 2px 8px rgba(232, 160, 76, 0.3);
   }
 
   .send-btn:disabled {
@@ -643,43 +1598,28 @@ export const cardStyles = css`
   }
 
   .send-btn.stop {
-    background: rgba(229, 115, 115, 0.22);
+    background: rgba(229, 115, 115, 0.18);
     color: #ff8a80;
     box-shadow: none;
+    border: 1px solid rgba(229, 115, 115, 0.25);
   }
 
   .send-btn.stop:hover {
-    background: rgba(229, 115, 115, 0.32);
-    color: #ff8a80;
+    background: rgba(229, 115, 115, 0.28);
+    transform: none;
   }
 
   .send-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2.4;
+    stroke-width: 2.2;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
 
-  /* ── Spinner ─────────────────────────────────────────── */
-  .spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(15, 20, 25, 0.25);
-    border-top-color: #0F1419;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  /* ── Loading state ───────────────────────────────────── */
+  /* ── Loading state (skeleton) ────────────────────────── */
   .loading-state {
     flex: 1;
     display: flex;
@@ -689,12 +1629,16 @@ export const cardStyles = css`
   }
 
   .loading-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid var(--bonnie-surface-3);
+    width: 28px;
+    height: 28px;
+    border: 2.5px solid var(--bonnie-surface-3);
     border-top-color: var(--bonnie-accent);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   /* ── Responsive: narrow ───────────────────────────────── */
@@ -703,7 +1647,10 @@ export const cardStyles = css`
       display: none;
     }
     .bubble {
-      max-width: 88%;
+      max-width: 90%;
+    }
+    .bubble.assistant {
+      max-width: 94%;
     }
   }
 `
