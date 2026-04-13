@@ -1,22 +1,78 @@
 import { marked } from 'marked'
+import hljs from 'highlight.js/lib/core'
 
-// Configure marked for safe, minimal output
+// Tree-shakeable language imports — only ship what we need
+import javascript from 'highlight.js/lib/languages/javascript'
+import typescript from 'highlight.js/lib/languages/typescript'
+import python from 'highlight.js/lib/languages/python'
+import bash from 'highlight.js/lib/languages/bash'
+import yaml from 'highlight.js/lib/languages/yaml'
+import json from 'highlight.js/lib/languages/json'
+import xml from 'highlight.js/lib/languages/xml'  // covers html
+import css from 'highlight.js/lib/languages/css'
+import go from 'highlight.js/lib/languages/go'
+import rust from 'highlight.js/lib/languages/rust'
+import java from 'highlight.js/lib/languages/java'
+import diff from 'highlight.js/lib/languages/diff'
+import plaintext from 'highlight.js/lib/languages/plaintext'
+
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('yml', yaml)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('diff', diff)
+hljs.registerLanguage('plaintext', plaintext)
+hljs.registerLanguage('text', plaintext)
+
+// Configure marked
 marked.setOptions({
   gfm: true,
   breaks: true,
 })
 
-// Custom renderer to add language badge and copy button to code blocks
+// Custom renderer
 const renderer = new marked.Renderer()
 
 renderer.code = function(code: string, infostring: string | undefined, _escaped: boolean): string {
-  const language = (infostring || '').split(/\s/)[0] || ''
-  const badge = language ? `<span class="code-lang">${language}</span>` : ''
+  const language = (infostring || '').split(/\s/)[0].toLowerCase() || ''
+
+  // Apply syntax highlighting
+  let highlighted: string
+  try {
+    if (language && hljs.getLanguage(language)) {
+      highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value
+    } else {
+      highlighted = hljs.highlightAuto(code).value
+    }
+  } catch {
+    highlighted = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+
+  // Also escape for data-code attribute
   const escaped = code
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+
+  const badge = language ? `<span class="code-lang">${language}</span>` : ''
+
   return `<div class="code-block-wrap">
     <div class="code-block-header">
       ${badge}
@@ -25,7 +81,7 @@ renderer.code = function(code: string, infostring: string | undefined, _escaped:
         <span>Copy</span>
       </button>
     </div>
-    <pre><code class="language-${language}">${escaped}</code></pre>
+    <pre><code class="hljs language-${language}">${highlighted}</code></pre>
   </div>`
 }
 
@@ -37,9 +93,16 @@ renderer.table = function(header: string, body: string): string {
   return `<div class="md-table-wrap"><table class="md-table"><thead>${header}</thead><tbody>${body}</tbody></table></div>`
 }
 
+// Image renderer: max-width 100%, rounded corners, lazy loading
+renderer.image = function(href: string, title: string | null, text: string): string {
+  const titleAttr = title ? ` title="${title}"` : ''
+  const altAttr = text ? ` alt="${text}"` : ''
+  return `<img src="${href}"${altAttr}${titleAttr} class="md-image" loading="lazy">`
+}
+
 marked.use({ renderer })
 
-// Simple script-tag stripper (belt-and-suspenders after marked's own escaping)
+// Simple script-tag stripper
 function stripScripts(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<script[^>]*>/gi, '')
 }
