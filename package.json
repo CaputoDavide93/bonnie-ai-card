@@ -1,0 +1,24 @@
+{
+  "name": "bonnie-ai-card",
+  "version": "0.1.0",
+  "description": "A Home Assistant Lovelace card for chatting with a Bonnie AI Chat backend",
+  "main": "dist/bonnie-ai-card.js",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "lit": "^3.2.0",
+    "marked": "^12.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.20.0",
+    "tslib": "^2.6.2",
+    "typescript": "^5.5.0"
+  }
+}
