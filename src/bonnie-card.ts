@@ -1238,18 +1238,37 @@ function svgAlertCircle(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
 }
 
-function svgBrandMark(): TemplateResult {
-  // Stylized "B" lettermark for the header logo
-  return html`<svg viewBox="0 0 16 16" fill="currentColor" stroke="none">
-    <path d="M4 2h5a3 3 0 0 1 2.12 5.12A3.5 3.5 0 0 1 9 14H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm0 5h4a1.5 1.5 0 0 0 0-3H4v3zm0 1v4h5a1.5 1.5 0 0 0 0-3H4v-1z"/>
+// Stylized thistle — Scotland's national flower, minimalist silhouette that
+// reads cleanly at 16px and 32px. Tufted crown + round bulb + tapered leaves.
+function svgThistle(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <!-- Spiky crown: 5 tapered triangles forming a fan -->
+    <path d="M12 2 L11.2 8 L12.8 8 Z"/>
+    <path d="M8.5 3.2 L9.2 8.4 L10.5 8 Z"/>
+    <path d="M15.5 3.2 L14.8 8.4 L13.5 8 Z"/>
+    <path d="M5.5 5.5 L7.8 9 L9 8.3 Z"/>
+    <path d="M18.5 5.5 L16.2 9 L15 8.3 Z"/>
+    <!-- Bulb: egg shape with subtle cross-band for pineapple texture -->
+    <path d="M12 8
+             C 7.5 8, 5.5 11, 5.5 14.2
+             C 5.5 17.2, 8 19, 12 19
+             C 16 19, 18.5 17.2, 18.5 14.2
+             C 18.5 11, 16.5 8, 12 8 Z"/>
+    <!-- Horizontal band on bulb (darker overlay) -->
+    <path d="M6 13.5 L18 13.5" stroke="rgba(0,0,0,0.22)" stroke-width="1" fill="none"/>
+    <!-- Stem + 2 swept leaves -->
+    <path d="M11.1 19 L11.1 23 L12.9 23 L12.9 19 Z"/>
+    <path d="M11 20.5 C 8 20, 5 20.5, 4 22.5 C 7 22, 9.5 21.5, 11 21.5 Z"/>
+    <path d="M13 20.5 C 16 20, 19 20.5, 20 22.5 C 17 22, 14.5 21.5, 13 21.5 Z"/>
   </svg>`
 }
 
+function svgBrandMark(): TemplateResult {
+  return svgThistle()
+}
+
 function svgBrandMarkLarge(): TemplateResult {
-  // Larger version for empty state
-  return html`<svg viewBox="0 0 32 32" fill="var(--bonnie-accent)" stroke="none">
-    <path d="M8 4h9a5.5 5.5 0 0 1 4.24 9.02A6.5 6.5 0 0 1 17 28H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 9h7.5a2.5 2.5 0 0 0 0-5H8v5zm0 2v9h9a3 3 0 0 0 0-6H8v-3z"/>
-  </svg>`
+  return svgThistle()
 }
 
 function svgQuestion(): TemplateResult {

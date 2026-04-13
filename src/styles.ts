@@ -83,10 +83,10 @@ export const cardStyles = css`
   }
 
   .brand-logo svg {
-    width: 16px;
-    height: 16px;
-    fill: #0D1117;
-    stroke: none;
+    width: 20px;
+    height: 20px;
+    color: #0D1117;
+    fill: currentColor;
   }
 
   .header-title {
@@ -676,10 +676,10 @@ export const cardStyles = css`
   }
 
   .empty-icon-wrap svg {
-    width: 32px;
-    height: 32px;
-    fill: var(--bonnie-accent);
-    stroke: none;
+    width: 42px;
+    height: 42px;
+    color: var(--bonnie-accent);
+    fill: currentColor;
   }
 
   .empty-heading {
