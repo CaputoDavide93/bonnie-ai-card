@@ -55,6 +55,19 @@ export async function createSession(
   })
 }
 
+export async function renameSession(
+  baseUrl: string,
+  token: string,
+  sessionId: string,
+  title: string,
+): Promise<Session> {
+  return request<Session>(`${baseUrl}/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ title }),
+  })
+}
+
 export async function getSession(
   baseUrl: string,
   token: string,

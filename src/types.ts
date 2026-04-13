@@ -97,4 +97,12 @@ export interface Bubble {
   /** Accumulates during streaming */
   streaming?: boolean
   error?: boolean
+  /** Animation state */
+  isNew?: boolean
+}
+
+// ── API rename session ────────────────────────────────────────────────────────
+
+export interface RenameSessionPayload {
+  title: string
 }
