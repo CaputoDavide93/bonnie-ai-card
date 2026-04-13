@@ -1,6 +1,6 @@
 // bonnie-ai-card — native HA Lovelace card for Bonnie AI Chat
 console.info(
-  '%c bonnie-ai-card %c v0.2.0 ',
+  '%c bonnie-ai-card %c v0.3.0 ',
   'color: white; background: #E8A04C; font-weight: 700;',
   'color: #E8A04C; background: white; font-weight: 700;',
 )
@@ -16,7 +16,7 @@ import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
-import type { BonnieCardConfig, Session, Bubble, SseEvent } from './types.js'
+import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats } from './types.js'
 import {
   ApiError,
   kioskExchange,
@@ -28,6 +28,8 @@ import {
   postChat,
   cancelStream,
   streamUrl,
+  updateSessionTitle,
+  respondPermission,
 } from './api.js'
 import { renderMarkdown } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -115,12 +117,26 @@ export class BonnieCard extends LitElement {
   @state() private charCount = 0
   @state() private showCharCount = false
   @state() private showKbHelp = false
+  // Feature 5: voice input
+  @state() private isListening = false
+  @state() private hasSpeechRecognition = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
+  // Feature 6: export menu
+  @state() private showExportMenu = false
+  // Feature 10: theme toggle (auto / dark / light)
+  @state() private themeMode: 'auto' | 'dark' | 'light' = 'auto'
+  // Permission requests
+  @state() private activePermissionRequest: { turnId: string; toolName: string; toolDescription?: string } | null = null
 
   private _eventSource: EventSource | null = null
   private _resizeObserver: ResizeObserver | null = null
   private _userScrolled = false
   private _scrollTimeout: ReturnType<typeof setTimeout> | null = null
   private _lastUserMessageText = ''
+  private _speechRecognition: any = null
+  private _turnStartTime: number | null = null
+
+  // Auto-title: regex to detect auto-generated session titles
+  private static readonly AUTO_TITLE_RE = /^(?:New conversation|Chat \d{1,2} \w+ (?:at )?\d{1,2}:\d{2})$/
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -130,6 +146,13 @@ export class BonnieCard extends LitElement {
     try {
       const saved = localStorage.getItem(LS_SIDEBAR_KEY)
       if (saved !== null) this.sidebarOpen = saved === 'true'
+    } catch {}
+    // Restore theme preference
+    try {
+      const savedTheme = localStorage.getItem('bonnie-theme') as 'auto' | 'dark' | 'light' | null
+      if (savedTheme && ['auto', 'dark', 'light'].includes(savedTheme)) {
+        this.themeMode = savedTheme
+      }
     } catch {}
     // Bootstrap only if config is already set (HA sets it before connecting;
     // in the test harness setConfig is called after — setConfig will trigger it)
@@ -144,6 +167,7 @@ export class BonnieCard extends LitElement {
     this._closeStream()
     this._resizeObserver?.disconnect()
     document.removeEventListener('keydown', this._onGlobalKeydown)
+    this._stopListening()
   }
 
   override firstUpdated(): void {
@@ -165,6 +189,12 @@ export class BonnieCard extends LitElement {
     }
     if (changed.has('sessions') || changed.has('searchQuery')) {
       this._filterSessions()
+    }
+    if (changed.has('themeMode')) {
+      try {
+        localStorage.setItem('bonnie-theme', this.themeMode)
+      } catch {}
+      this._applyTheme()
     }
   }
 
@@ -207,6 +237,25 @@ export class BonnieCard extends LitElement {
         (s.title || '').toLowerCase().includes(q)
       )
     }
+  }
+
+  // ── Theme ─────────────────────────────────────────────────────────────────
+
+  private _applyTheme(): void {
+    const host = this.shadowRoot?.host as HTMLElement | null
+    if (!host) return
+    if (this.themeMode === 'dark') {
+      host.setAttribute('data-theme', 'dark')
+    } else if (this.themeMode === 'light') {
+      host.setAttribute('data-theme', 'light')
+    } else {
+      host.removeAttribute('data-theme')
+    }
+  }
+
+  private _cycleTheme(): void {
+    const next: Record<string, 'auto' | 'dark' | 'light'> = { auto: 'dark', dark: 'light', light: 'auto' }
+    this.themeMode = next[this.themeMode]
   }
 
   // ── Session actions ───────────────────────────────────────────────────────
@@ -383,7 +432,7 @@ export class BonnieCard extends LitElement {
         this.activeSessionTitle = session.title
         this.bubbles = []
       } catch (err) {
-        this._showError('Could not start a new conversation.')
+        this.errorMessage = 'Could not start a new conversation.'
         return
       }
     }
@@ -414,6 +463,7 @@ export class BonnieCard extends LitElement {
         this.config.model,
       )
       this.streamingTurnId = turn_id
+      this._turnStartTime = Date.now()
       this._openStream(turn_id)
     } catch (e) {
       this._handleApiError(e)
@@ -511,10 +561,35 @@ export class BonnieCard extends LitElement {
           }
         }
       } else if (parsed.type === 'result') {
-        this.bubbles = this.bubbles.map((b) =>
-          b.streaming ? { ...b, streaming: false, error: parsed.subtype === 'error' } : b,
-        )
+        // Attach per-turn stats to the last assistant bubble
+        const stats: TurnStats = {}
+        if (parsed.usage?.input_tokens !== undefined) stats.inputTokens = parsed.usage.input_tokens
+        if (parsed.usage?.output_tokens !== undefined) stats.outputTokens = parsed.usage.output_tokens
+        if (parsed.total_cost_usd !== undefined) stats.costUsd = parsed.total_cost_usd
+        if (parsed.duration_ms !== undefined) {
+          stats.durationMs = parsed.duration_ms
+        } else if (this._turnStartTime) {
+          stats.durationMs = Date.now() - this._turnStartTime
+        }
+        const lastAssistantId = [...this.bubbles].reverse().find((b) => b.role === 'assistant' && b.streaming)?.id
+        this.bubbles = this.bubbles.map((b) => {
+          if (b.streaming) {
+            return {
+              ...b,
+              streaming: false,
+              error: parsed.subtype === 'error',
+              // Only attach stats to the last streaming assistant bubble
+              ...(b.id === lastAssistantId && Object.keys(stats).length > 0 ? { stats } : {}),
+            }
+          }
+          return b
+        })
         this._finishStream()
+        // Feature 3: auto-title from first user message
+        void this._maybeAutoTitle()
+      } else if ((parsed as any).type === 'permission_request') {
+        const perm = parsed as any
+        this.activePermissionRequest = { turnId: perm.turn_id, toolName: perm.tool_name, toolDescription: perm.tool_description }
       }
     })
 
@@ -538,7 +613,183 @@ export class BonnieCard extends LitElement {
   private _finishStream(): void {
     this._closeStream()
     this.streamingTurnId = null
+    this._turnStartTime = null
     void this._loadSessions()
+  }
+
+  // Feature 3: Auto-title from first user message
+  private async _maybeAutoTitle(): Promise<void> {
+    if (!this.sessionToken || !this.activeSessionId) return
+    const session = this.sessions.find((s) => s.id === this.activeSessionId)
+    if (!session) return
+    const isAutoTitle = !session.title || session.title === '' ||
+      BonnieCard.AUTO_TITLE_RE.test(session.title)
+    if (!isAutoTitle) return
+
+    // Get first user message text
+    const firstUser = this.bubbles.find((b) => b.role === 'user')
+    if (!firstUser?.text) return
+
+    // Derive title: first 40 chars trimmed to word boundary
+    let title = firstUser.text.slice(0, 60)
+    if (firstUser.text.length > 60) {
+      const lastSpace = title.lastIndexOf(' ')
+      if (lastSpace > 20) title = title.slice(0, lastSpace)
+    }
+    title = title.trim()
+    if (!title) return
+
+    await updateSessionTitle(this.config.backend_url, this.sessionToken, this.activeSessionId, title)
+    // Update local state
+    this.sessions = this.sessions.map((s) => s.id === this.activeSessionId ? { ...s, title } : s)
+    if (this.activeSessionId === this.activeSessionId) this.activeSessionTitle = title
+  }
+
+  // Feature 5: Voice input methods
+  private _toggleVoice(): void {
+    if (this.isListening) {
+      this._stopListening()
+    } else {
+      this._startListening()
+    }
+  }
+
+  private _startListening(): void {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+
+    try {
+      const rec = new SpeechRecognition()
+      rec.lang = navigator.language || 'en-US'
+      rec.continuous = false
+      rec.interimResults = true
+
+      rec.onstart = () => {
+        this.isListening = true
+      }
+
+      rec.onresult = (e: any) => {
+        let interim = ''
+        let final = ''
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const transcript = e.results[i][0].transcript
+          if (e.results[i].isFinal) {
+            final += transcript
+          } else {
+            interim += transcript
+          }
+        }
+        // Update draft with the transcript so far
+        const ta = this.shadowRoot?.querySelector<HTMLTextAreaElement>('.composer-textarea')
+        if (ta) {
+          const base = this.draft.replace(/\[…\]$/, '').trimEnd()
+          if (final) {
+            this.draft = base ? base + ' ' + final.trim() : final.trim()
+            ta.value = this.draft
+          } else if (interim) {
+            ta.value = (base ? base + ' ' : '') + interim + ' […]'
+          }
+          ta.style.height = 'auto'
+          ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'
+        }
+      }
+
+      rec.onend = () => {
+        this.isListening = false
+        // Clean up interim indicator
+        const ta = this.shadowRoot?.querySelector<HTMLTextAreaElement>('.composer-textarea')
+        if (ta) {
+          this.draft = ta.value.replace(/ \[…\]$/, '').trim()
+          ta.value = this.draft
+        }
+        this._speechRecognition = null
+      }
+
+      rec.onerror = (e: any) => {
+        this.isListening = false
+        this._speechRecognition = null
+        if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+          this._showToast('Microphone access denied')
+        }
+      }
+
+      this._speechRecognition = rec
+      rec.start()
+    } catch {
+      this._showToast('Voice input unavailable')
+    }
+  }
+
+  private _stopListening(): void {
+    if (this._speechRecognition) {
+      try { this._speechRecognition.stop() } catch {}
+      this._speechRecognition = null
+    }
+    this.isListening = false
+  }
+
+  // Feature 6: Export conversation
+  private _exportMarkdown(): void {
+    if (!this.activeSessionId) return
+    this.showExportMenu = false
+    const title = this.activeSessionTitle || 'Conversation'
+    const date = new Date().toISOString().split('T')[0]
+    const lines: string[] = [`# ${title}`, `_Exported: ${date}_`, '']
+    for (const b of this.bubbles) {
+      if (b.role === 'user') {
+        lines.push('### User', b.text ?? '', '')
+      } else if (b.role === 'assistant') {
+        lines.push('### Bonnie', b.text ?? '', '')
+      } else if (b.role === 'tool') {
+        lines.push(`### Tool: ${b.toolName ?? 'unknown'}`)
+        if (b.toolInput !== undefined) lines.push('**Input:**', '```json', JSON.stringify(b.toolInput, null, 2), '```', '')
+        if (b.toolResult !== undefined) lines.push('**Result:**', '```', String(b.toolResult).slice(0, 2000), '```', '')
+      }
+    }
+    this._downloadBlob(lines.join('\n'), `bonnie-${date}-${title.slice(0, 20).replace(/\s+/g, '-')}.md`, 'text/markdown')
+  }
+
+  private _exportJson(): void {
+    if (!this.activeSessionId) return
+    this.showExportMenu = false
+    const session = this.sessions.find((s) => s.id === this.activeSessionId)
+    const payload = {
+      session,
+      bubbles: this.bubbles.map(({ id, role, text, toolName, toolInput, toolResult, stats }) =>
+        ({ id, role, text, toolName, toolInput, toolResult, stats })),
+      exported_at: new Date().toISOString(),
+    }
+    const date = new Date().toISOString().split('T')[0]
+    const title = this.activeSessionTitle || 'conversation'
+    this._downloadBlob(JSON.stringify(payload, null, 2), `bonnie-${date}-${title.slice(0, 20).replace(/\s+/g, '-')}.json`, 'application/json')
+  }
+
+  private _downloadBlob(content: string, filename: string, mime: string): void {
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+
+  // Feature 8: Permission response
+  private async _respondPermission(approved: boolean): Promise<void> {
+    if (!this.activePermissionRequest || !this.sessionToken) return
+    const req = this.activePermissionRequest
+    this.activePermissionRequest = null
+    await respondPermission(this.config.backend_url, this.sessionToken, req.turnId, approved)
+  }
+
+  // Toast notification (used by voice input for errors)
+  @state() private _toastMessage: string | null = null
+  private _toastTimer: ReturnType<typeof setTimeout> | null = null
+
+  private _showToast(msg: string): void {
+    this._toastMessage = msg
+    if (this._toastTimer) clearTimeout(this._toastTimer)
+    this._toastTimer = setTimeout(() => { this._toastMessage = null }, 3000)
   }
 
   private _closeStream(): void {
@@ -748,7 +999,10 @@ export class BonnieCard extends LitElement {
 
     const isUser = b.role === 'user'
     const isCopied = this.copiedMsgId === b.id
-    const html_ = isUser ? nothing : unsafeHTML(renderMarkdown(b.text ?? ''))
+    // Feature 2: during streaming, show raw text with cursor; on completion parse markdown
+    const html_ = isUser ? nothing : (b.streaming
+      ? html`<span class="streaming-text">${b.text ?? ''}</span><span class="cursor"></span>`
+      : unsafeHTML(renderMarkdown(b.text ?? '')))
 
     // Determine if this is the last assistant bubble (for regenerate action)
     const lastAssistant = [...this.bubbles].reverse().find((x) => x.role === 'assistant')
@@ -791,9 +1045,35 @@ export class BonnieCard extends LitElement {
         <div class=${classMap({ bubble: true, [b.role]: true, error: !!b.error })}>
           ${isUser
             ? b.text
-            : html`${html_}${b.streaming ? html`<span class="cursor"></span>` : nothing}`}
+            : html_}
         </div>
+
+        <!-- Feature 7: Token/cost stats footer -->
+        ${!isUser && !b.streaming && b.stats && (b.stats.outputTokens || b.stats.costUsd) ? html`
+          <div class="turn-stats">
+            ${b.stats.outputTokens ? html`${b.stats.outputTokens} tok` : nothing}${b.stats.inputTokens && b.stats.outputTokens ? html` · in:${b.stats.inputTokens}` : nothing}${b.stats.costUsd !== undefined ? html` · $${b.stats.costUsd.toFixed(5)}` : nothing}${b.stats.durationMs ? html` · ${(b.stats.durationMs / 1000).toFixed(1)}s` : nothing}
+          </div>
+        ` : nothing}
       </div>
+
+      <!-- Feature 8: Permission card -->
+      ${b.role === 'assistant' && !b.streaming && this.activePermissionRequest ? html`
+        <div class="bubble-row assistant">
+          <div class="permission-card">
+            <div class="permission-header">
+              ${svgKey()}
+              <span class="permission-title">Permission required</span>
+            </div>
+            <div class="permission-body">
+              Bonnie wants to use <strong>${this.activePermissionRequest.toolName}</strong>${this.activePermissionRequest.toolDescription ? html` — ${this.activePermissionRequest.toolDescription}` : nothing}
+            </div>
+            <div class="permission-actions">
+              <button class="permission-deny-btn" @click=${() => this._respondPermission(false)}>Deny</button>
+              <button class="permission-approve-btn" @click=${() => this._respondPermission(true)}>Approve</button>
+            </div>
+          </div>
+        </div>
+      ` : nothing}
     `
   }
 
@@ -986,7 +1266,7 @@ export class BonnieCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="bonnie-card">
+        <div class="bonnie-card" @click=${() => { if (this.showExportMenu) this.showExportMenu = false }}>
           <!-- Delete confirm overlay -->
           ${this.confirmDeleteId ? html`
             <div class="confirm-overlay" @click=${() => { this.confirmDeleteId = null }}>
@@ -1018,6 +1298,32 @@ export class BonnieCard extends LitElement {
               </div>
             </div>
             ${isStreaming ? html`<div class="status-dot streaming" title="Streaming"></div>` : nothing}
+            <!-- Feature 10: Theme toggle -->
+            <button
+              class="icon-btn"
+              title="Theme: ${this.themeMode}"
+              @click=${() => this._cycleTheme()}
+            >${this.themeMode === 'light' ? svgSun() : this.themeMode === 'dark' ? svgMoon() : svgSunMoon()}</button>
+            <!-- Feature 6: Export menu -->
+            ${this.activeSessionId ? html`
+              <div class="export-menu-wrap" style="position:relative">
+                <button
+                  class="icon-btn"
+                  title="Export conversation"
+                  @click=${() => { this.showExportMenu = !this.showExportMenu }}
+                >${svgDots()}</button>
+                ${this.showExportMenu ? html`
+                  <div class="export-menu" @click=${(e: Event) => e.stopPropagation()}>
+                    <button class="export-menu-item" @click=${() => this._exportMarkdown()}>
+                      ${svgDownload()} Export as Markdown
+                    </button>
+                    <button class="export-menu-item" @click=${() => this._exportJson()}>
+                      ${svgDownload()} Export as JSON
+                    </button>
+                  </div>
+                ` : nothing}
+              </div>
+            ` : nothing}
             <div class="kb-help-wrap">
               <button
                 class="icon-btn"
@@ -1152,10 +1458,19 @@ export class BonnieCard extends LitElement {
               <!-- Composer -->
               <div class="composer-wrap">
                 <div class="composer-inner">
+                  <!-- Feature 5: Voice mic button -->
+                  ${this.hasSpeechRecognition ? html`
+                    <button
+                      class=${classMap({ 'mic-btn': true, listening: this.isListening })}
+                      @click=${() => this._toggleVoice()}
+                      title=${this.isListening ? 'Stop listening' : 'Voice input'}
+                      ?disabled=${isStreaming}
+                    >${svgMic()}</button>
+                  ` : nothing}
                   <textarea
                     class="composer-textarea"
                     rows="1"
-                    placeholder=${isStreaming ? 'Bonnie is thinking…' : 'Message Bonnie… (Enter to send, Shift+Enter for newline)'}
+                    placeholder=${isStreaming ? 'Bonnie is thinking…' : this.isListening ? 'Listening…' : 'Message Bonnie… (Enter to send, Shift+Enter for newline)'}
                     .value=${this.draft}
                     ?disabled=${isStreaming || this.loading || !this.sessionToken}
                     @input=${this._onInput}
@@ -1181,6 +1496,10 @@ export class BonnieCard extends LitElement {
                     </div>`
                   : nothing}
               </div>
+              <!-- Toast notification -->
+              ${this._toastMessage ? html`
+                <div class="toast">${this._toastMessage}</div>
+              ` : nothing}
             </div>
           </div>
         </div>
@@ -1290,6 +1609,34 @@ function svgBrandMarkLarge(): TemplateResult {
 
 function svgQuestion(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+}
+
+function svgMic(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+}
+
+function svgDots(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>`
+}
+
+function svgDownload(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
+}
+
+function svgSun(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+}
+
+function svgMoon(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+}
+
+function svgSunMoon(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M12 8a2.83 2.83 0 0 0 4 4 4 4 0 1 1-4-4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/></svg>`
+}
+
+function svgKey(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`
 }
 
 // ── Register custom element ────────────────────────────────────────────────
