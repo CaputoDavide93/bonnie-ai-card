@@ -160,6 +160,8 @@ export class BonnieCard extends LitElement {
   @state() private sessionLoading = false
   @state() private errorMessage: string | null = null
   @state() private isWide = false
+  @state() private sidebarCollapsed = false
+  @state() private dragOver = false
   @state() private showScrollToBottom = false
   @state() private confirmDeleteId: string | null = null
   @state() private renamingId: string | null = null
@@ -1778,6 +1780,17 @@ export class BonnieCard extends LitElement {
     })
   }
 
+  // ── Feature: Drag-and-drop image upload ────────────────────────────────────
+
+  private _handleDroppedFiles(e: DragEvent): void {
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+    const accepted = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+    const images = Array.from(files).filter((f) => accepted.includes(f.type))
+    if (images.length === 0) return
+    void this._onFilesSelected(images)
+  }
+
   private async _uploadFile(file: File): Promise<void> {
     if (!this.sessionToken) return
 
@@ -3069,7 +3082,10 @@ export class BonnieCard extends LitElement {
             <!-- Wide-mode sidebar -->
             ${this.isWide
               ? html`
-                  <div class="sidebar">
+                  <div class=${classMap({ sidebar: true, collapsed: this.sidebarCollapsed })}>
+                    <button class="sidebar-collapse-btn" aria-label=${this.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} @click=${() => { this.sidebarCollapsed = !this.sidebarCollapsed }}>
+                      <svg viewBox="0 0 24 24"><path d=${this.sidebarCollapsed ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'}/></svg>
+                    </button>
                     ${this._renderSidebarContent()}
                   </div>
                 `
@@ -3095,7 +3111,12 @@ export class BonnieCard extends LitElement {
               : nothing}
 
             <!-- Chat pane -->
-            <div class="chat-pane">
+            <div class=${classMap({ 'chat-pane': true, 'drag-over': this.dragOver })}
+              @dragover=${(e: DragEvent) => { e.preventDefault(); this.dragOver = true }}
+              @dragleave=${() => { this.dragOver = false }}
+              @drop=${(e: DragEvent) => { e.preventDefault(); this.dragOver = false; this._handleDroppedFiles(e) }}
+            >
+              ${this.dragOver ? html`<div class="drop-overlay">Drop image here</div>` : nothing}
               ${this.loading
                 ? html`<div class="loading-state"><div class="loading-spinner"></div></div>`
                 : !this.activeSessionId

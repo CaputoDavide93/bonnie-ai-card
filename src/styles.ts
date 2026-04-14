@@ -7,6 +7,9 @@ export const cardStyles = css`
     --bonnie-accent-soft: color-mix(in srgb, var(--bonnie-accent) 12%, transparent);
     --bonnie-accent-mid: color-mix(in srgb, var(--bonnie-accent) 25%, transparent);
     --bonnie-accent-hover: color-mix(in srgb, var(--bonnie-accent) 85%, white);
+    --bonnie-accent-focus: rgba(232, 160, 76, 0.35);
+    --bonnie-accent-glow: rgba(232, 160, 76, 0.1);
+    --bonnie-on-accent: #0D1117;
 
     /* ── Text: honour HA theme vars ─────────────────────────── */
     --bonnie-ink-0: var(--primary-text-color, #E6EDF3);
@@ -59,6 +62,7 @@ export const cardStyles = css`
     flex-shrink: 0;
     background: var(--bonnie-surface-1);
     min-height: 52px;
+    flex-wrap: wrap;
   }
 
   .header-brand {
@@ -79,13 +83,13 @@ export const cardStyles = css`
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(232, 160, 76, 0.35);
+    box-shadow: 0 2px 8px var(--bonnie-accent-focus);
   }
 
   .brand-logo svg {
     width: 20px;
     height: 20px;
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     fill: currentColor;
   }
 
@@ -195,6 +199,53 @@ export const cardStyles = css`
     flex-direction: column;
     overflow: hidden;
     background: var(--bonnie-surface-1);
+    transition: width 0.15s ease, min-width 0.15s ease;
+  }
+
+  .sidebar.collapsed {
+    width: 48px;
+    min-width: 48px;
+  }
+  .sidebar.collapsed .session-list,
+  .sidebar.collapsed .sidebar-search,
+  .sidebar.collapsed .sidebar-header-text,
+  .sidebar.collapsed .sidebar-top > .search-wrap,
+  .sidebar.collapsed .sidebar-top > .new-chat-btn,
+  .sidebar.collapsed .sidebar-section-label,
+  .sidebar.collapsed .session-empty,
+  .sidebar.collapsed .archived-toggle-wrap {
+    display: none;
+  }
+
+  .sidebar-collapse-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    color: var(--bonnie-ink-2);
+    padding: 0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    margin: 10px auto 0;
+  }
+  .sidebar-collapse-btn:hover {
+    background: var(--bonnie-surface-3);
+    border-color: var(--bonnie-border);
+    color: var(--bonnie-ink-0);
+  }
+  .sidebar-collapse-btn svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .sidebar-top {
@@ -212,7 +263,7 @@ export const cardStyles = css`
     gap: 8px;
     width: 100%;
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     border: none;
     border-radius: 10px;
     padding: 9px 14px;
@@ -221,12 +272,12 @@ export const cardStyles = css`
     cursor: pointer;
     font-family: inherit;
     transition: all 0.15s;
-    box-shadow: 0 2px 10px rgba(232, 160, 76, 0.3);
+    box-shadow: 0 2px 10px var(--bonnie-accent-focus);
   }
 
   .new-chat-btn:hover {
     background: var(--bonnie-accent-hover);
-    box-shadow: 0 4px 16px rgba(232, 160, 76, 0.45);
+    box-shadow: 0 4px 16px var(--bonnie-accent-focus);
     transform: translateY(-1px);
   }
 
@@ -286,8 +337,8 @@ export const cardStyles = css`
   }
 
   .search-input:focus {
-    border-color: rgba(232, 160, 76, 0.35);
-    box-shadow: 0 0 0 2px rgba(232, 160, 76, 0.1);
+    border-color: var(--bonnie-accent-focus);
+    box-shadow: 0 0 0 2px var(--bonnie-accent-glow);
   }
 
   .sidebar-section-label {
@@ -434,14 +485,14 @@ export const cardStyles = css`
   .session-rename-input {
     width: 100%;
     background: var(--bonnie-surface-3);
-    border: 1px solid rgba(232, 160, 76, 0.4);
+    border: 1px solid var(--bonnie-accent-focus);
     border-radius: 6px;
     padding: 3px 7px;
     font-size: 13px;
     font-family: inherit;
     color: var(--bonnie-ink-0);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(232, 160, 76, 0.1);
+    box-shadow: 0 0 0 2px var(--bonnie-accent-glow);
   }
 
   .session-empty {
@@ -587,8 +638,28 @@ export const cardStyles = css`
     flex-direction: column;
     min-width: 0;
     overflow: hidden;
-    background: var(--bonnie-surface-0);
     position: relative;
+    background: var(--bonnie-surface-0);
+  }
+
+  .chat-pane.drag-over {
+    outline: 2px dashed var(--bonnie-accent);
+    outline-offset: -4px;
+  }
+
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.4);
+    color: var(--bonnie-accent);
+    font-size: 1.2rem;
+    font-weight: 600;
+    z-index: 10;
+    pointer-events: none;
+    border-radius: var(--bonnie-radius);
   }
 
   /* ── Messages ────────────────────────────────────────── */
@@ -681,7 +752,7 @@ export const cardStyles = css`
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 24px rgba(232, 160, 76, 0.12);
+    box-shadow: 0 4px 24px var(--bonnie-accent-glow);
   }
 
   .empty-icon-wrap svg {
@@ -709,7 +780,7 @@ export const cardStyles = css`
 
   .start-btn {
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     border: none;
     border-radius: 12px;
     padding: 11px 24px;
@@ -721,14 +792,14 @@ export const cardStyles = css`
     display: flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 4px 18px rgba(232, 160, 76, 0.35);
+    box-shadow: 0 4px 18px var(--bonnie-accent-focus);
     letter-spacing: -0.01em;
   }
 
   .start-btn:hover {
     background: var(--bonnie-accent-hover);
     transform: translateY(-1px);
-    box-shadow: 0 6px 24px rgba(232, 160, 76, 0.5);
+    box-shadow: 0 6px 24px var(--bonnie-accent-focus);
   }
 
   .start-btn svg {
@@ -770,7 +841,7 @@ export const cardStyles = css`
 
   .suggested-prompt-btn:hover {
     background: var(--bonnie-accent-soft);
-    border-color: rgba(232, 160, 76, 0.35);
+    border-color: var(--bonnie-accent-focus);
     color: var(--bonnie-ink-0);
     transform: translateY(-1px);
   }
@@ -827,7 +898,7 @@ export const cardStyles = css`
   }
 
   .template-card:hover {
-    border-color: rgba(232, 160, 76, 0.4);
+    border-color: var(--bonnie-accent-focus);
     background: var(--bonnie-accent-soft);
     transform: translateY(-1px);
   }
@@ -862,7 +933,7 @@ export const cardStyles = css`
 
   .template-start-btn {
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     border: none;
     border-radius: 8px;
     padding: 5px 10px;
@@ -1106,11 +1177,11 @@ export const cardStyles = css`
 
   .bubble.user {
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     border-bottom-right-radius: 5px;
     font-weight: 500;
     letter-spacing: -0.01em;
-    box-shadow: 0 2px 10px rgba(232, 160, 76, 0.25);
+    box-shadow: 0 2px 10px var(--bonnie-accent-focus);
   }
 
   .bubble.assistant {
@@ -1140,7 +1211,7 @@ export const cardStyles = css`
   .edit-bubble-textarea {
     width: 100%;
     background: var(--bonnie-surface-2);
-    border: 1.5px solid rgba(232, 160, 76, 0.45);
+    border: 1.5px solid var(--bonnie-accent-focus);
     border-radius: 14px;
     padding: 10px 14px;
     font-size: 14px;
@@ -1149,7 +1220,7 @@ export const cardStyles = css`
     resize: none;
     outline: none;
     line-height: 1.6;
-    box-shadow: 0 0 0 3px rgba(232, 160, 76, 0.1);
+    box-shadow: 0 0 0 3px var(--bonnie-accent-glow);
     min-height: 60px;
     box-sizing: border-box;
   }
@@ -1182,7 +1253,7 @@ export const cardStyles = css`
 
   .edit-send-btn {
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     font-weight: 600;
   }
 
@@ -1632,8 +1703,8 @@ export const cardStyles = css`
   }
 
   .composer-inner:focus-within {
-    border-color: rgba(232, 160, 76, 0.35);
-    box-shadow: 0 0 0 3px rgba(232, 160, 76, 0.08);
+    border-color: var(--bonnie-accent-focus);
+    box-shadow: 0 0 0 3px var(--bonnie-accent-glow);
   }
 
   .composer-textarea {
@@ -1694,7 +1765,7 @@ export const cardStyles = css`
     height: 34px;
     border-radius: 50%;
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
     border: none;
     cursor: pointer;
     display: flex;
@@ -1702,7 +1773,7 @@ export const cardStyles = css`
     justify-content: center;
     flex-shrink: 0;
     transition: all 0.15s;
-    box-shadow: 0 2px 8px rgba(232, 160, 76, 0.3);
+    box-shadow: 0 2px 8px var(--bonnie-accent-focus);
   }
 
   .send-btn:disabled {
@@ -1715,7 +1786,7 @@ export const cardStyles = css`
   .send-btn:not(:disabled):hover {
     background: var(--bonnie-accent-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(232, 160, 76, 0.5);
+    box-shadow: 0 4px 14px var(--bonnie-accent-focus);
   }
 
   .send-btn.stop {
@@ -2209,7 +2280,7 @@ export const cardStyles = css`
   :host([data-theme="light"]) .hljs-comment,
   :host([data-theme="light"]) .hljs-quote,
   :host([data-theme="light"]) .hljs-meta {
-    color: #9DA1A6;
+    color: #6B7280;
   }
 
   /* ── Feature 9: Typing indicator ──────────────────────── */
@@ -2936,6 +3007,6 @@ export const cardStyles = css`
   }
   .user-role-badge.admin {
     background: var(--bonnie-accent);
-    color: #0D1117;
+    color: var(--bonnie-on-accent);
   }
 `
