@@ -849,8 +849,21 @@ export const cardStyles = css`
   /* Conversation templates */
   .template-section {
     width: 100%;
-    max-width: 480px;
+    max-width: 560px;
     margin-top: 4px;
+    position: relative;
+  }
+  .template-section::after {
+    content: '';
+    position: absolute;
+    top: 20px;
+    right: 0;
+    bottom: 0;
+    width: 48px;
+    background: linear-gradient(to right, transparent, var(--bonnie-surface-0));
+    pointer-events: none;
+    border-radius: 0 12px 12px 0;
+    z-index: 1;
   }
 
   .template-section-label {
@@ -869,17 +882,13 @@ export const cardStyles = css`
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--bonnie-border) transparent;
+    padding-right: 48px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
   .template-row::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  .template-row::-webkit-scrollbar-thumb {
-    background: var(--bonnie-border);
-    border-radius: 2px;
+    display: none;
   }
 
   .template-card {

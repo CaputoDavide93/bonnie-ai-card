@@ -1184,6 +1184,9 @@ export class BonnieCard extends LitElement {
     } catch (e) {
       this._handleApiError(e)
       this.streamingTurnId = null
+      // Remove orphaned user bubble and restore draft
+      this.bubbles = this.bubbles.filter((b) => b.id !== userBubble.id)
+      this.draft = text
     }
   }
 
@@ -1335,9 +1338,10 @@ export class BonnieCard extends LitElement {
             if (!currentAssistantId) {
               const bubble: Bubble = { id: uid(), role: 'assistant', text: '', streaming: true, isNew: true }
               currentAssistantId = bubble.id
+              const aSnapId = bubble.id
               this.bubbles = [...this.bubbles, bubble]
               setTimeout(() => {
-                this.bubbles = this.bubbles.map((b) => b.id === currentAssistantId ? { ...b, isNew: false } : b)
+                this.bubbles = this.bubbles.map((b) => b.id === aSnapId ? { ...b, isNew: false } : b)
               }, 300)
             }
             this.bubbles = this.bubbles.map((b) =>
@@ -1362,9 +1366,10 @@ export class BonnieCard extends LitElement {
               isNew: true,
             }
             currentToolId = toolBubble.id
+            const tSnapId = toolBubble.id
             this.bubbles = [...this.bubbles, toolBubble]
             setTimeout(() => {
-              this.bubbles = this.bubbles.map((b) => b.id === currentToolId ? { ...b, isNew: false } : b)
+              this.bubbles = this.bubbles.map((b) => b.id === tSnapId ? { ...b, isNew: false } : b)
             }, 300)
             if (!this._userScrolled) this._scrollBottom()
           }
@@ -2728,7 +2733,7 @@ export class BonnieCard extends LitElement {
                 ` : html`
                   <!-- Plugin list -->
                   ${this.plugins.length === 0 && !this.pluginAddMode ? html`
-                    <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--muted)">
+                    <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--bonnie-ink-2)">
                       No plugins registered yet.
                     </div>
                   ` : html`
@@ -2737,12 +2742,12 @@ export class BonnieCard extends LitElement {
                         <div class="memory-item" style="flex-direction:column;align-items:flex-start;gap:0.25rem">
                           <div style="display:flex;align-items:center;gap:0.5rem;width:100%">
                             <span class="memory-key" style="flex:1">${p.name}</span>
-                            <span class="memory-badge" style="background:${p.method === 'GET' ? 'var(--accent)' : 'var(--muted)'};color:white;font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px">${p.method}</span>
+                            <span class="memory-badge" style="background:${p.method === 'GET' ? 'var(--bonnie-accent)' : 'var(--bonnie-ink-2)'};color:white;font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px">${p.method}</span>
                             <!-- enabled toggle -->
                             <button
                               class="icon-btn"
                               title="${p.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}"
-                              style="color:${p.enabled ? 'var(--accent)' : 'var(--muted)'}"
+                              style="color:${p.enabled ? 'var(--bonnie-accent)' : 'var(--bonnie-ink-2)'}"
                               @click=${() => void this._togglePluginEnabled(p)}
                             >${p.enabled ? svgCheck() : svgClose()}</button>
                             <!-- delete button -->
@@ -2753,8 +2758,8 @@ export class BonnieCard extends LitElement {
                               @click=${() => void this._deletePlugin(p.id)}
                             >${svgTrash()}</button>
                           </div>
-                          <span class="memory-value" style="font-size:0.78rem;color:var(--muted)">${p.description}</span>
-                          <span style="font-size:0.7rem;color:var(--muted);word-break:break-all">${p.endpoint}</span>
+                          <span class="memory-value" style="font-size:0.78rem;color:var(--bonnie-ink-2)">${p.description}</span>
+                          <span style="font-size:0.7rem;color:var(--bonnie-ink-2);word-break:break-all">${p.endpoint}</span>
                         </div>
                       `)}
                     </div>
