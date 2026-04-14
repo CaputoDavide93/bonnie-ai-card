@@ -1,4 +1,5 @@
 import type { AuthResponse, Session, SessionDetail, UploadResponse } from './types.js'
+export type { Session }
 
 export class ApiError extends Error {
   constructor(
@@ -179,6 +180,46 @@ export async function deleteUpload(
   } catch {
     // Best-effort — ignore errors
   }
+}
+
+/** Fork a conversation from a given turn, creating a new session */
+export async function forkSession(
+  baseUrl: string,
+  token: string,
+  convId: string,
+  fromTurnId: string,
+  newMessage: string,
+): Promise<{ session_id: string; turn_id: string }> {
+  return request<{ session_id: string; turn_id: string }>(
+    `${baseUrl}/api/sessions/${convId}/fork`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ from_turn_id: fromTurnId, new_message: newMessage }),
+    },
+  )
+}
+
+/** PATCH session flags (pinned, archived, title, system_prompt) */
+export async function patchSession(
+  baseUrl: string,
+  token: string,
+  sessionId: string,
+  patch: { pinned?: boolean; archived?: boolean; title?: string; system_prompt?: string | null },
+): Promise<Session> {
+  return request<Session>(`${baseUrl}/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(patch),
+  })
+}
+
+/** List sessions — optionally show archived ones */
+export async function listSessionsArchived(
+  baseUrl: string,
+  token: string,
+): Promise<Session[]> {
+  return request<Session[]>(`${baseUrl}/api/sessions?archived=true`, { token })
 }
 
 /** Update the session system prompt (pass null/empty to clear) */

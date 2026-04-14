@@ -2372,4 +2372,87 @@ export const cardStyles = css`
     flex-shrink: 0;
     pointer-events: none;
   }
+
+  /* ── T4-8: Pin/archive ─────────────────────────────────── */
+
+  .session-item.pinned {
+    border-left: 2px solid var(--bonnie-accent);
+  }
+
+  .pin-indicator {
+    font-size: 10px;
+    margin-right: 3px;
+    flex-shrink: 0;
+  }
+
+  .pinned-label {
+    color: var(--bonnie-accent);
+  }
+
+  .session-action-btn.pinned-btn {
+    color: var(--bonnie-accent);
+  }
+
+  .archived-toggle-wrap {
+    padding: 6px 12px 4px;
+    border-top: 1px solid var(--bonnie-border-soft);
+    margin-top: 4px;
+  }
+
+  .archived-toggle-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--bonnie-ink-2);
+    font-size: 0.75rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.15s;
+  }
+
+  .archived-toggle-btn:hover {
+    color: var(--bonnie-ink-1);
+  }
+
+  .archived-count {
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-2);
+    font-size: 10px;
+    padding: 0 4px;
+    border-radius: 8px;
+    min-width: 16px;
+    text-align: center;
+  }
+
+  .archived-list {
+    opacity: 0.75;
+  }
+
+  /* ── T4-5: Toast notification ──────────────────────────── */
+
+  .toast-notification {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-0);
+    border: 1px solid var(--bonnie-border);
+    border-radius: var(--bonnie-radius-sm);
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    z-index: 100;
+    box-shadow: var(--bonnie-shadow-sm);
+    animation: toast-in 0.2s ease;
+    pointer-events: none;
+  }
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
 `
