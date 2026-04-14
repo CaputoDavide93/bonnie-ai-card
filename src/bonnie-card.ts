@@ -920,24 +920,71 @@ export class BonnieCard extends LitElement {
   private _turnsToBubbles(turns: RawTurn[]): Bubble[] {
     const out: Bubble[] = []
     for (const turn of turns) {
-      if (!Array.isArray(turn.content)) continue
-      for (const block of turn.content) {
-        if (block.type === 'text') {
-          out.push({ id: uid(), role: turn.role === 'user' ? 'user' : 'assistant', text: block.text, turnId: turn.id })
-        } else if (block.type === 'tool_use') {
-          out.push({
-            id: uid(),
-            role: 'tool',
-            toolName: block.name,
-            toolInput: block.input,
-            turnId: turn.id,
-          })
-        } else if (block.type === 'tool_result') {
-          const match = [...out].reverse().find((b) => b.role === 'tool' && !b.toolResult)
-          if (match) {
-            match.toolResult = block.content
+      // User bubble from user_message
+      if (turn.user_message) {
+        out.push({ id: uid(), role: 'user', text: turn.user_message, turnId: turn.id })
+      }
+
+      if (!Array.isArray(turn.events)) continue
+
+      // Reconstruct assistant + tool bubbles from stored events
+      let lastAssistantBubble: Bubble | null = null
+      let lastToolBubble: Bubble | null = null
+      let turnStats: TurnStats | undefined
+
+      for (const ev of turn.events) {
+        if (ev.type === 'assistant') {
+          const isOffline = !!ev.offline
+          for (const block of ev.message?.content ?? []) {
+            if (block.type === 'text') {
+              if (!lastAssistantBubble) {
+                lastAssistantBubble = { id: uid(), role: 'assistant', text: '', turnId: turn.id }
+                out.push(lastAssistantBubble)
+              }
+              lastAssistantBubble.text = (lastAssistantBubble.text ?? '') + block.text
+              if (isOffline) lastAssistantBubble.error = false // offline fallback, not error
+            } else if (block.type === 'tool_use') {
+              // Close current assistant bubble
+              lastAssistantBubble = null
+              lastToolBubble = {
+                id: uid(),
+                role: 'tool',
+                toolName: block.name,
+                toolInput: block.input,
+                turnId: turn.id,
+              }
+              out.push(lastToolBubble)
+            }
           }
+        } else if (ev.type === 'user') {
+          // tool_result events
+          for (const block of ev.message?.content ?? []) {
+            if (block.type === 'tool_result' && lastToolBubble) {
+              lastToolBubble.toolResult = block.content
+              lastToolBubble = null
+            }
+          }
+        } else if (ev.type === 'result') {
+          // Attach stats to last assistant bubble
+          turnStats = {}
+          if (ev.usage?.input_tokens !== undefined) turnStats.inputTokens = ev.usage.input_tokens
+          if (ev.usage?.output_tokens !== undefined) turnStats.outputTokens = ev.usage.output_tokens
+          if (ev.total_cost_usd !== undefined) turnStats.costUsd = ev.total_cost_usd
+          if (ev.duration_ms !== undefined) turnStats.durationMs = ev.duration_ms
+          if (ev.subtype === 'error' && lastAssistantBubble) {
+            lastAssistantBubble.error = true
+          }
+        } else if (ev.type === '_error') {
+          // Mark last assistant bubble as error
+          if (lastAssistantBubble) lastAssistantBubble.error = true
         }
+      }
+
+      // Attach stats to last assistant bubble in this turn
+      if (turnStats && Object.keys(turnStats).length > 0) {
+        const lastAst = [...out].reverse().find((b) => b.role === 'assistant' && b.turnId === turn.id)
+        if (lastAst) lastAst.stats = turnStats
+        this._accumulateSessionStats(turnStats)
       }
     }
     return out
@@ -1931,6 +1978,8 @@ export class BonnieCard extends LitElement {
   // ── Render helpers ────────────────────────────────────────────────────────
 
   private _renderBubble(b: Bubble): TemplateResult {
+    // Hide tool-use bubbles for non-admin users — show only the final answer
+    if (b.role === 'tool' && !this.isAdmin) return html``
     if (b.role === 'tool') return this._renderToolBubble(b)
     if (b.id === this.editingBubbleId && b.role === 'user') return this._renderEditBubble(b)
 

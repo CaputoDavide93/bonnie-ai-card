@@ -53,9 +53,11 @@ export interface SessionDetail extends Session {
 // Raw turn shape returned from GET /api/sessions/{id}
 export interface RawTurn {
   id: string
-  role: string
-  content: TurnContent[]
-  created_at: string
+  user_message: string
+  events: Record<string, any>[]
+  status: string
+  created_at: number
+  completed_at: number | null
 }
 
 // ── SSE event shapes ──────────────────────────────────────────────────────────
