@@ -71,7 +71,8 @@ renderer.code = function(code: string, infostring: string | undefined, _escaped:
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 
-  const badge = language ? `<span class="code-lang">${language}</span>` : ''
+  const safeLang = escAttr(language)
+  const badge = language ? `<span class="code-lang">${safeLang}</span>` : ''
 
   return `<div class="code-block-wrap">
     <div class="code-block-header">
@@ -81,7 +82,7 @@ renderer.code = function(code: string, infostring: string | undefined, _escaped:
         <span>Copy</span>
       </button>
     </div>
-    <pre><code class="hljs language-${language}">${highlighted}</code></pre>
+    <pre><code class="hljs language-${safeLang}">${highlighted}</code></pre>
   </div>`
 }
 
@@ -111,14 +112,37 @@ renderer.image = function(href: string, title: string | null, text: string): str
   return `<img src="${safeHref}"${altAttr}${titleAttr} class="md-image" loading="lazy">`
 }
 
+// Link renderer: block javascript: URIs (marked v12 does not by default)
+renderer.link = function(href: string, title: string | null, text: string): string {
+  if (!isSafeUrl(href)) return escAttr(text || href)
+  const safeHref = escAttr(href)
+  const titleAttr = title ? ` title="${escAttr(title)}"` : ''
+  return `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
+}
+
 marked.use({ renderer })
 
-// Simple script-tag stripper
-function stripScripts(html: string): string {
-  return html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<script[^>]*>/gi, '')
+// Robust HTML sanitizer — strips all event handlers, dangerous elements, and
+// javascript: URIs that marked v12's default renderer lets through. This
+// replaces the previous stripScripts() which only caught <script> tags.
+function sanitize(html: string): string {
+  // 1. Strip dangerous tags entirely (including content)
+  let out = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<script[^>]*>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<iframe[^>]*>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[^>]*>/gi, '')
+    .replace(/<base[^>]*>/gi, '')
+  // 2. Strip ALL event handler attributes (on*)
+  out = out.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
+  // 3. Strip javascript: in href/src/action attributes
+  out = out.replace(/(href|src|action)\s*=\s*["']\s*javascript:/gi, '$1="')
+  return out
 }
 
 export function renderMarkdown(text: string): string {
   const raw = marked.parse(text) as string
-  return stripScripts(raw)
+  return sanitize(raw)
 }
