@@ -290,6 +290,10 @@ export class BonnieCard extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback()
+    // Cancel backend subprocess to stop burning Claude API tokens
+    if (this.streamingTurnId && this.sessionToken) {
+      void cancelStream(this.config.backend_url, this.sessionToken, this.streamingTurnId)
+    }
     this._closeStream()
     this._revokeAttachmentUrls(this.bubbles)
     this._resizeObserver?.disconnect()
