@@ -142,7 +142,19 @@ function sanitize(html: string): string {
   return out
 }
 
+// ── Markdown memoization cache (Feature T4-4) ─────────────────────────────
+// Keyed by raw text string, value is sanitized HTML. Cleared on session switch.
+const _markdownCache = new Map<string, string>()
+
 export function renderMarkdown(text: string): string {
+  const cached = _markdownCache.get(text)
+  if (cached !== undefined) return cached
   const raw = marked.parse(text) as string
-  return sanitize(raw)
+  const result = sanitize(raw)
+  _markdownCache.set(text, result)
+  return result
+}
+
+export function clearMarkdownCache(): void {
+  _markdownCache.clear()
 }

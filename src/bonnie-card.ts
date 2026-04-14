@@ -16,7 +16,7 @@ import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
-import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn } from './types.js'
+import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult } from './types.js'
 import {
   ApiError,
   kioskExchange,
@@ -29,11 +29,13 @@ import {
   cancelStream,
   streamUrl,
   updateSessionTitle,
+  updateSessionSystemPrompt,
+  searchSession,
   respondPermission,
   uploadImage,
   deleteUpload,
 } from './api.js'
-import { renderMarkdown } from './markdown.js'
+import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -164,6 +166,23 @@ export class BonnieCard extends LitElement {
   @state() private allowedModels: string[] = []
   @state() private selectedModel = ''
 
+  // Feature T4-1: Per-conversation system prompt
+  @state() private showSystemPromptPanel = false
+  @state() private systemPromptDraft = ''
+  @state() private activeSystemPrompt: string | null = null
+
+  // Feature T4-2: Message search
+  @state() private showMessageSearch = false
+  @state() private messageSearchQuery = ''
+  @state() private messageSearchResults: SearchResult[] = []
+  @state() private messageSearchLoading = false
+  private _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Feature T4-3: Virtualization
+  @state() private visibleStart = 0
+  @state() private visibleEnd = 0
+  private _topSentinelObserver: IntersectionObserver | null = null
+
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
@@ -206,6 +225,7 @@ export class BonnieCard extends LitElement {
     this._closeStream()
     this._revokeAttachmentUrls(this.bubbles)
     this._resizeObserver?.disconnect()
+    this._topSentinelObserver?.disconnect()
     document.removeEventListener('keydown', this._onGlobalKeydown)
     this._stopListening()
   }
@@ -249,6 +269,12 @@ export class BonnieCard extends LitElement {
         localStorage.setItem('bonnie-theme', this.themeMode)
       } catch {}
       this._applyTheme()
+    }
+    // Feature T4-3: re-attach sentinel observer when visible range or bubbles change
+    if (changed.has('visibleStart') || changed.has('bubbles')) {
+      if (this.bubbles.length > BonnieCard.VIRT_THRESHOLD && this.visibleStart > 0) {
+        this._setupTopSentinel()
+      }
     }
   }
 
@@ -328,14 +354,25 @@ export class BonnieCard extends LitElement {
     this.sidebarOpen = false
     this._userScrolled = false
     this.showScrollToBottom = false
+    this.showSystemPromptPanel = false
+    this.showMessageSearch = false
+    this.messageSearchQuery = ''
+    this.messageSearchResults = []
+    clearMarkdownCache()
 
     const session = this.sessions.find((s) => s.id === id)
     this.activeSessionTitle = session?.title ?? ''
+    this.activeSystemPrompt = session?.system_prompt ?? null
+    this.systemPromptDraft = this.activeSystemPrompt ?? ''
 
     this.sessionLoading = true
     try {
       const detail = await getSession(this.config.backend_url, this.sessionToken, id)
+      this.activeSystemPrompt = (detail as any).system_prompt ?? null
+      this.systemPromptDraft = this.activeSystemPrompt ?? ''
       this.bubbles = this._turnsToBubbles(detail.turns)
+      // Feature T4-3: init visible range
+      this._initVisibleRange()
       this._scrollBottom()
     } catch (e) {
       this._handleApiError(e)
@@ -350,6 +387,13 @@ export class BonnieCard extends LitElement {
     this._revokeAttachmentUrls(this.bubbles)
     this.sidebarOpen = false
     this.editingBubbleId = null
+    this.showSystemPromptPanel = false
+    this.showMessageSearch = false
+    this.messageSearchQuery = ''
+    this.messageSearchResults = []
+    this.activeSystemPrompt = null
+    this.systemPromptDraft = ''
+    clearMarkdownCache()
     try {
       const ts = new Date().toLocaleString('en-GB', {
         day: '2-digit',
@@ -368,6 +412,7 @@ export class BonnieCard extends LitElement {
       this.bubbles = []
       this._userScrolled = false
       this.showScrollToBottom = false
+      this._initVisibleRange()
       // Focus composer
       this._focusComposer()
     } catch (e) {
@@ -453,19 +498,110 @@ export class BonnieCard extends LitElement {
     }
   }
 
+  // ── Feature T4-1: Per-conversation system prompt ──────────────────────────
+
+  private _toggleSystemPromptPanel(): void {
+    this.showSystemPromptPanel = !this.showSystemPromptPanel
+    if (this.showSystemPromptPanel) {
+      this.showMessageSearch = false
+      this.systemPromptDraft = this.activeSystemPrompt ?? ''
+      this.updateComplete.then(() => {
+        const ta = this.shadowRoot?.querySelector<HTMLTextAreaElement>('.system-prompt-textarea')
+        ta?.focus()
+      })
+    }
+  }
+
+  private async _saveSystemPrompt(): Promise<void> {
+    if (!this.sessionToken || !this.activeSessionId) return
+    const prompt = this.systemPromptDraft.trim() || null
+    this.activeSystemPrompt = prompt
+    this.showSystemPromptPanel = false
+    await updateSessionSystemPrompt(this.config.backend_url, this.sessionToken, this.activeSessionId, prompt)
+    // Update local sessions list
+    this.sessions = this.sessions.map((s) =>
+      s.id === this.activeSessionId ? { ...s, system_prompt: prompt } : s
+    )
+  }
+
+  private _clearSystemPrompt(): void {
+    this.systemPromptDraft = ''
+  }
+
+  // ── Feature T4-2: Message search ─────────────────────────────────────────
+
+  private _toggleMessageSearch(): void {
+    this.showMessageSearch = !this.showMessageSearch
+    if (this.showMessageSearch) {
+      this.showSystemPromptPanel = false
+      this.messageSearchQuery = ''
+      this.messageSearchResults = []
+      this.updateComplete.then(() => {
+        const input = this.shadowRoot?.querySelector<HTMLInputElement>('.msg-search-input')
+        input?.focus()
+      })
+    }
+  }
+
+  private _onMessageSearchInput(e: Event): void {
+    this.messageSearchQuery = (e.target as HTMLInputElement).value
+    if (this._searchDebounceTimer) clearTimeout(this._searchDebounceTimer)
+    if (!this.messageSearchQuery.trim()) {
+      this.messageSearchResults = []
+      return
+    }
+    this._searchDebounceTimer = setTimeout(() => void this._doMessageSearch(), 300)
+  }
+
+  private async _doMessageSearch(): Promise<void> {
+    if (!this.sessionToken || !this.activeSessionId || !this.messageSearchQuery.trim()) return
+    this.messageSearchLoading = true
+    try {
+      this.messageSearchResults = await searchSession(
+        this.config.backend_url,
+        this.sessionToken,
+        this.activeSessionId,
+        this.messageSearchQuery.trim(),
+      )
+    } catch {
+      this.messageSearchResults = []
+    } finally {
+      this.messageSearchLoading = false
+    }
+  }
+
+  private _scrollToTurn(turnId: string): void {
+    // Find the bubble index whose source turn_id matches — we store them by uid()
+    // so we can't match directly. Instead we scroll by searching for turn_id in
+    // bubble data-turn-id attributes (set in render).
+    const el = this.shadowRoot?.querySelector(`[data-turn-id="${turnId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('search-highlight-flash')
+      setTimeout(() => el.classList.remove('search-highlight-flash'), 1500)
+    }
+  }
+
+  private _highlightSnippet(snippet: string): string {
+    if (!this.messageSearchQuery) return snippet
+    const escaped = this.messageSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return snippet.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>')
+  }
+
   private _turnsToBubbles(turns: RawTurn[]): Bubble[] {
     const out: Bubble[] = []
     for (const turn of turns) {
       if (!Array.isArray(turn.content)) continue
       for (const block of turn.content) {
         if (block.type === 'text') {
-          out.push({ id: uid(), role: turn.role === 'user' ? 'user' : 'assistant', text: block.text })
+          out.push({ id: uid(), role: turn.role === 'user' ? 'user' : 'assistant', text: block.text, turnId: turn.id })
         } else if (block.type === 'tool_use') {
           out.push({
             id: uid(),
             role: 'tool',
             toolName: block.name,
             toolInput: block.input,
+            turnId: turn.id,
           })
         } else if (block.type === 'tool_result') {
           const match = [...out].reverse().find((b) => b.role === 'tool' && !b.toolResult)
@@ -527,6 +663,10 @@ export class BonnieCard extends LitElement {
       attachments: sentAttachments.length ? sentAttachments : undefined,
     }
     this.bubbles = [...this.bubbles, userBubble]
+    // Feature T4-3: extend visible range to include new bubble
+    if (this.bubbles.length > BonnieCard.VIRT_THRESHOLD) {
+      this.visibleEnd = this.bubbles.length
+    }
     this._scrollBottom()
 
     // Remove isNew after animation
@@ -714,7 +854,47 @@ export class BonnieCard extends LitElement {
     this._closeStream()
     this.streamingTurnId = null
     this._turnStartTime = null
+    // Extend visible range to include the newly added bubbles
+    if (this.bubbles.length > 50) {
+      this.visibleEnd = this.bubbles.length
+    }
     void this._loadSessions()
+  }
+
+  // ── Feature T4-3: Virtualization helpers ─────────────────────────────────
+
+  private static readonly VIRT_THRESHOLD = 50
+  private static readonly VIRT_BUFFER = 15 // extra bubbles to keep rendered above/below viewport
+
+  private _initVisibleRange(): void {
+    const n = this.bubbles.length
+    if (n <= BonnieCard.VIRT_THRESHOLD) {
+      this.visibleStart = 0
+      this.visibleEnd = n
+    } else {
+      // Show the last VIRT_THRESHOLD + BUFFER bubbles on initial load
+      this.visibleStart = Math.max(0, n - BonnieCard.VIRT_THRESHOLD)
+      this.visibleEnd = n
+    }
+  }
+
+  private _setupTopSentinel(): void {
+    this._topSentinelObserver?.disconnect()
+    const sentinel = this.shadowRoot?.querySelector('.virt-top-sentinel')
+    if (!sentinel) return
+    this._topSentinelObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && this.visibleStart > 0) {
+            // Load earlier messages
+            const newStart = Math.max(0, this.visibleStart - BonnieCard.VIRT_THRESHOLD)
+            this.visibleStart = newStart
+          }
+        }
+      },
+      { root: this.shadowRoot?.querySelector('.messages'), threshold: 0.1 }
+    )
+    this._topSentinelObserver.observe(sentinel)
   }
 
   // Feature 3: Auto-title from first user message
@@ -1288,7 +1468,7 @@ export class BonnieCard extends LitElement {
     const isLastAssistant = !b.streaming && b.id === lastAssistant?.id
 
     return html`
-      <div class=${classMap({ 'bubble-row': true, [b.role]: true, 'new-msg': !!b.isNew })}>
+      <div class=${classMap({ 'bubble-row': true, [b.role]: true, 'new-msg': !!b.isNew })} data-turn-id=${b.turnId ?? ''}>
         <!-- Message action bar (shown on hover) -->
         <div class="msg-actions">
           <button
@@ -1534,6 +1714,50 @@ export class BonnieCard extends LitElement {
     `
   }
 
+  // Feature T4-3: Virtualized bubble rendering
+  private _renderVirtualizedBubbles(): TemplateResult {
+    const all = this.bubbles
+    const n = all.length
+    if (n <= BonnieCard.VIRT_THRESHOLD) {
+      // No virtualization needed
+      return html`
+        ${all.map((b) => this._renderBubble(b))}
+        ${this._renderTypingIndicator()}
+        ${this._renderPermissionCard()}
+      `
+    }
+    const start = Math.max(0, this.visibleStart)
+    const end = Math.min(n, this.visibleEnd || n)
+    const visible = all.slice(start, end)
+
+    // Estimate spacer height: roughly 80px per bubble average
+    const topSpacerHeight = start * 80
+    const bottomBubbles = all.slice(end)
+    // We keep bottom bubbles rendered since streaming may add them,
+    // but for a large gap we can skip them. For safety, keep end = n during streaming.
+
+    return html`
+      ${start > 0 ? html`<div class="virt-top-spacer" style="height:${topSpacerHeight}px"></div>` : nothing}
+      <div class="virt-top-sentinel"></div>
+      ${visible.map((b) => this._renderBubble(b))}
+      ${this._renderTypingIndicator()}
+      ${this._renderPermissionCard()}
+    `
+  }
+
+  /** Ensure a turn's bubbles are in the visible range (for search scroll). */
+  private _ensureTurnVisible(turnId: string): void {
+    if (this.bubbles.length <= BonnieCard.VIRT_THRESHOLD) return
+    const idx = this.bubbles.findIndex((b) => b.turnId === turnId)
+    if (idx === -1) return
+    if (idx < this.visibleStart || idx >= this.visibleEnd) {
+      const buffer = BonnieCard.VIRT_BUFFER
+      this.visibleStart = Math.max(0, idx - buffer)
+      this.visibleEnd = Math.min(this.bubbles.length, idx + buffer + 1)
+    }
+  }
+
+  // Feature T4-2: render search result snippet with mark tags
   private _renderSkeletonLoading(): TemplateResult {
     return html`
       <div class="skeleton-wrap">
@@ -1641,6 +1865,24 @@ export class BonnieCard extends LitElement {
                   <option value=${m} ?selected=${m === this.selectedModel}>${m.replace('claude-', '').replace(/-\d+$/, (v) => v)}</option>
                 `)}
               </select>
+            ` : nothing}
+            <!-- Feature T4-1: System prompt icon button -->
+            ${this.activeSessionId ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': !!this.activeSystemPrompt })}
+                aria-label="Custom system prompt"
+                title=${this.activeSystemPrompt ? 'Custom system prompt active' : 'Set custom system prompt'}
+                @click=${() => this._toggleSystemPromptPanel()}
+              >${svgSystemPrompt()}</button>
+            ` : nothing}
+            <!-- Feature T4-2: Message search icon button -->
+            ${this.activeSessionId ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showMessageSearch })}
+                aria-label="Search messages"
+                title="Search messages"
+                @click=${() => this._toggleMessageSearch()}
+              >${svgSearch()}</button>
             ` : nothing}
             <!-- Feature 6 + 14: Export / Copy menu -->
             ${this.activeSessionId ? html`
@@ -1769,6 +2011,70 @@ export class BonnieCard extends LitElement {
                       </div>
                     `
                   : html`
+                      <!-- Feature T4-1: System prompt inline panel -->
+                      ${this.showSystemPromptPanel ? html`
+                        <div class="system-prompt-panel">
+                          <div class="system-prompt-header">
+                            <span class="system-prompt-title">Custom system prompt</span>
+                            <span class="system-prompt-hint">Overrides Bonnie's default persona for this conversation.</span>
+                          </div>
+                          <textarea
+                            class="system-prompt-textarea"
+                            rows="4"
+                            placeholder="e.g. You are a Linux terminal. Output only commands, no explanations."
+                            .value=${this.systemPromptDraft}
+                            @input=${(e: Event) => { this.systemPromptDraft = (e.target as HTMLTextAreaElement).value }}
+                            @keydown=${(e: KeyboardEvent) => {
+                              if (e.key === 'Escape') { this.showSystemPromptPanel = false }
+                            }}
+                          ></textarea>
+                          <div class="system-prompt-actions">
+                            <button class="system-prompt-clear-btn" @click=${() => this._clearSystemPrompt()}>Clear</button>
+                            <button class="system-prompt-cancel-btn" @click=${() => { this.showSystemPromptPanel = false }}>Cancel</button>
+                            <button class="system-prompt-save-btn" @click=${() => void this._saveSystemPrompt()}>Save</button>
+                          </div>
+                        </div>
+                      ` : nothing}
+
+                      <!-- Feature T4-2: Message search inline panel -->
+                      ${this.showMessageSearch ? html`
+                        <div class="msg-search-panel">
+                          <div class="msg-search-input-wrap">
+                            <span class="msg-search-icon">${svgSearch()}</span>
+                            <input
+                              class="msg-search-input"
+                              type="text"
+                              placeholder="Search messages…"
+                              .value=${this.messageSearchQuery}
+                              @input=${(e: Event) => this._onMessageSearchInput(e)}
+                              @keydown=${(e: KeyboardEvent) => { if (e.key === 'Escape') { this.showMessageSearch = false } }}
+                            />
+                            <button class="icon-btn msg-search-close" @click=${() => { this.showMessageSearch = false }}>${svgClose()}</button>
+                          </div>
+                          ${this.messageSearchLoading
+                            ? html`<div class="msg-search-loading">Searching…</div>`
+                            : this.messageSearchQuery && this.messageSearchResults.length === 0
+                              ? html`<div class="msg-search-empty">No results for "${this.messageSearchQuery}"</div>`
+                              : this.messageSearchResults.length > 0 ? html`
+                                <div class="msg-search-results">
+                                  ${this.messageSearchResults.map((r) => html`
+                                    <button
+                                      class="msg-search-result"
+                                      @click=${() => {
+                                        // Ensure turn is visible before scrolling
+                                        this._ensureTurnVisible(r.turn_id)
+                                        this.updateComplete.then(() => this._scrollToTurn(r.turn_id))
+                                      }}
+                                    >
+                                      <span class="msg-search-result-role">${r.role}</span>
+                                      <span class="msg-search-result-snippet">${unsafeHTML(this._highlightSnippet(r.snippet))}</span>
+                                    </button>
+                                  `)}
+                                </div>
+                              ` : nothing}
+                        </div>
+                      ` : nothing}
+
                       <div class="messages" role="log" aria-live="polite">
                         ${this.sessionLoading
                           ? this._renderSkeletonLoading()
@@ -1783,11 +2089,7 @@ export class BonnieCard extends LitElement {
                                   `)}
                                 </div>
                               </div>`
-                            : html`
-                                ${this.bubbles.map((b) => this._renderBubble(b))}
-                                ${this._renderTypingIndicator()}
-                                ${this._renderPermissionCard()}
-                              `}
+                            : this._renderVirtualizedBubbles()}
                       </div>
                     `}
 
@@ -2034,6 +2336,10 @@ function svgSunMoon(): TemplateResult {
 
 function svgKey(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`
+}
+
+function svgSystemPrompt(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><polyline points="9 16 12 13 15 16"/><line x1="12" y1="13" x2="12" y2="19"/></svg>`
 }
 
 // ── Register custom element ────────────────────────────────────────────────
