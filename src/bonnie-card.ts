@@ -1293,6 +1293,7 @@ export class BonnieCard extends LitElement {
         <div class="msg-actions">
           <button
             class=${classMap({ 'msg-action-btn': true, copied: isCopied })}
+            aria-label=${isCopied ? 'Copied' : 'Copy message'}
             @click=${(e: Event) => this._copyMessage(b.id, b.text ?? '', e)}
             title="Copy"
           >
@@ -1302,6 +1303,7 @@ export class BonnieCard extends LitElement {
           ${isUser ? html`
             <button
               class="msg-action-btn"
+              aria-label="Edit message"
               @click=${(e: Event) => this._startEditBubble(b, e)}
               title="Edit"
             >
@@ -1312,6 +1314,7 @@ export class BonnieCard extends LitElement {
           ${isLastAssistant ? html`
             <button
               class="msg-action-btn"
+              aria-label="Regenerate response"
               @click=${() => this._regenerate()}
               title="Regenerate"
             >
@@ -1480,11 +1483,13 @@ export class BonnieCard extends LitElement {
           <div class="session-actions">
             <button
               class="session-action-btn"
+              aria-label="Rename conversation"
               title="Rename"
               @click=${(e: Event) => this._startRename(s.id, s.title, e)}
             >${svgPencil()}</button>
             <button
               class="session-action-btn delete"
+              aria-label="Delete conversation"
               title="Delete"
               @click=${(e: Event) => { e.stopPropagation(); this.confirmDeleteId = s.id }}
             >${svgTrash()}</button>
@@ -1603,7 +1608,7 @@ export class BonnieCard extends LitElement {
           <!-- Header -->
           <div class="header">
             ${!this.isWide
-              ? html`<button class="icon-btn" @click=${() => (this.sidebarOpen = !this.sidebarOpen)} title="Sessions (Cmd+/)">
+              ? html`<button class="icon-btn" aria-label="Menu" @click=${() => (this.sidebarOpen = !this.sidebarOpen)} title="Sessions (Cmd+/)">
                   ${svgMenu()}
                 </button>`
               : nothing}
@@ -1620,6 +1625,7 @@ export class BonnieCard extends LitElement {
             <!-- Feature 10: Theme toggle -->
             <button
               class="icon-btn"
+              aria-label="Toggle theme"
               title="Theme: ${this.themeMode}"
               @click=${() => this._cycleTheme()}
             >${this.themeMode === 'light' ? svgSun() : this.themeMode === 'dark' ? svgMoon() : svgSunMoon()}</button>
@@ -1641,6 +1647,7 @@ export class BonnieCard extends LitElement {
               <div class="export-menu-wrap" style="position:relative">
                 <button
                   class="icon-btn"
+                  aria-label="Export"
                   title="More options"
                   @click=${() => { this.showExportMenu = !this.showExportMenu }}
                 >${svgDots()}</button>
@@ -1662,6 +1669,7 @@ export class BonnieCard extends LitElement {
             <div class="kb-help-wrap">
               <button
                 class="icon-btn"
+                aria-label="Keyboard shortcuts"
                 title="Keyboard shortcuts"
                 @click=${() => { this.showKbHelp = !this.showKbHelp }}
               >${svgQuestion()}</button>
@@ -1705,7 +1713,7 @@ export class BonnieCard extends LitElement {
               </div>
             </div>
             ${this.isWide
-              ? html`<button class="icon-btn" @click=${this._newSession} title="New conversation (Cmd+N)">
+              ? html`<button class="icon-btn" aria-label="New conversation" @click=${this._newSession} title="New conversation (Cmd+N)">
                   ${svgPlus()}
                 </button>`
               : nothing}
@@ -1732,7 +1740,7 @@ export class BonnieCard extends LitElement {
                   <div class=${classMap({ 'sidebar-drawer': true, open: this.sidebarOpen })}>
                     <div class="drawer-header">
                       <span class="drawer-title">Conversations</span>
-                      <button class="icon-btn" @click=${() => (this.sidebarOpen = false)}>
+                      <button class="icon-btn" aria-label="Close sidebar" @click=${() => (this.sidebarOpen = false)}>
                         ${svgClose()}
                       </button>
                     </div>
@@ -1761,7 +1769,7 @@ export class BonnieCard extends LitElement {
                       </div>
                     `
                   : html`
-                      <div class="messages">
+                      <div class="messages" role="log" aria-live="polite">
                         ${this.sessionLoading
                           ? this._renderSkeletonLoading()
                           : this.bubbles.length === 0
@@ -1830,6 +1838,7 @@ export class BonnieCard extends LitElement {
                   <!-- Feature 11: Attach button -->
                   <button
                     class="attach-btn"
+                    aria-label="Attach image"
                     title="Attach image"
                     ?disabled=${isStreaming || this.uploadingCount > 0 || this.pendingAttachments.length >= 3}
                     @click=${() => this._openFilePicker()}
@@ -1838,6 +1847,7 @@ export class BonnieCard extends LitElement {
                   ${this.hasSpeechRecognition ? html`
                     <button
                       class=${classMap({ 'mic-btn': true, listening: this.isListening })}
+                      aria-label="Voice input"
                       @click=${() => this._toggleVoice()}
                       title=${this.isListening ? 'Stop listening' : 'Voice input'}
                       ?disabled=${isStreaming}
@@ -1854,6 +1864,7 @@ export class BonnieCard extends LitElement {
                   ></textarea>
                   <button
                     class=${classMap({ 'send-btn': true, stop: isStreaming })}
+                    aria-label=${isStreaming ? 'Stop generating' : 'Send message'}
                     ?disabled=${!isStreaming && !canSend}
                     @click=${isStreaming ? this._cancel : this._send}
                     title=${isStreaming ? 'Stop generating (Esc)' : 'Send (Enter)'}
