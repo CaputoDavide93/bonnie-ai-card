@@ -17,7 +17,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
 import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult, Plugin } from './types.js'
-import type { AuditStats, AuditDailyEntry, Memory, PluginCreate, UserSettings } from './api.js'
+import type { AuditStats, AuditDailyEntry, Memory, PluginCreate, UserSettings, UserView, RoleView } from './api.js'
 import {
   ApiError,
   kioskExchange,
@@ -51,6 +51,11 @@ import {
   deletePlugin,
   fetchSettings,
   patchSettings,
+  listUsers,
+  createUser,
+  deleteUser,
+  changePassword,
+  listRoles,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -250,12 +255,27 @@ export class BonnieCard extends LitElement {
   @state() private pluginFormError = ''
   @state() private pluginFormSaving = false
 
+  // User admin panel (admin only)
+  @state() private showUsers = false
+  @state() private users: UserView[] = []
+  @state() private roles: RoleView[] = []
+  @state() private usersLoading = false
+  @state() private userAddMode = false
+  @state() private userFormUsername = ''
+  @state() private userFormPassword = ''
+  @state() private userFormRoleId = ''
+  @state() private userFormError = ''
+  @state() private userFormSaving = false
+  @state() private userPasswordEditId: string | null = null
+  @state() private userPasswordDraft = ''
+
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
   private _streamGeneration = 0
   private _scrollHandler: (() => void) | null = null
   private _resizeObserver: ResizeObserver | null = null
+  private _currentUserId = ''
   private _userScrolled = false
   private _lastUserMessageText = ''
   private _speechRecognition: any = null
@@ -380,6 +400,7 @@ export class BonnieCard extends LitElement {
       this.selectedModel = this.config.model ?? models[0] ?? ''
       // Feature 13: detect admin role
       this.isAdmin = user?.role?.name === 'admin'
+      this._currentUserId = user?.id ?? ''
       const [,templates] = await Promise.all([
         this._loadSessions(),
         fetchTemplates(this.config.backend_url),
@@ -561,6 +582,87 @@ export class BonnieCard extends LitElement {
       this.pluginFormError = err instanceof Error ? err.message : 'Failed to save plugin.'
     } finally {
       this.pluginFormSaving = false
+    }
+  }
+
+  // ── User admin panel (admin only) ─────────────────────────────────────────
+
+  private async _openUsers(): Promise<void> {
+    this.showUsers = true
+    this.usersLoading = true
+    this.userAddMode = false
+    this.userFormError = ''
+    this.userPasswordEditId = null
+    try {
+      const [users, roles] = await Promise.all([
+        listUsers(this.config.backend_url, this.sessionToken!),
+        listRoles(this.config.backend_url, this.sessionToken!),
+      ])
+      this.users = users
+      this.roles = roles
+    } catch {
+      this.users = []
+      this.roles = []
+    } finally {
+      this.usersLoading = false
+    }
+  }
+
+  private _closeUsers(): void {
+    this.showUsers = false
+    this.userAddMode = false
+    this.userFormError = ''
+    this.userPasswordEditId = null
+  }
+
+  private async _createUser(): Promise<void> {
+    if (!this.sessionToken) return
+    this.userFormError = ''
+    const username = this.userFormUsername.trim()
+    const password = this.userFormPassword
+    const role_id = this.userFormRoleId
+    if (!username || !password) {
+      this.userFormError = 'Username and password are required.'
+      return
+    }
+    if (!role_id) {
+      this.userFormError = 'Please select a role.'
+      return
+    }
+    this.userFormSaving = true
+    try {
+      const created = await createUser(this.config.backend_url, this.sessionToken, { username, password, role_id })
+      this.users = [...this.users, created]
+      this.userAddMode = false
+      this.userFormUsername = ''
+      this.userFormPassword = ''
+      this.userFormRoleId = ''
+    } catch (err) {
+      this.userFormError = err instanceof Error ? err.message : 'Failed to create user.'
+    } finally {
+      this.userFormSaving = false
+    }
+  }
+
+  private async _deleteUser(userId: string): Promise<void> {
+    if (!this.sessionToken || userId === this._currentUserId) return
+    try {
+      await deleteUser(this.config.backend_url, this.sessionToken, userId)
+      this.users = this.users.filter((u) => u.id !== userId)
+    } catch {
+      // best-effort
+    }
+  }
+
+  private async _changeUserPassword(userId: string): Promise<void> {
+    if (!this.sessionToken || !this.userPasswordDraft.trim()) return
+    try {
+      await changePassword(this.config.backend_url, this.sessionToken, userId, this.userPasswordDraft)
+      this.userPasswordEditId = null
+      this.userPasswordDraft = ''
+      this._showToast('Password updated')
+    } catch {
+      this._showToast('Failed to update password')
     }
   }
 
@@ -2701,6 +2803,90 @@ export class BonnieCard extends LitElement {
             </div>
           ` : nothing}
 
+          <!-- User admin overlay -->
+          ${this.showUsers ? html`
+            <div class="analytics-overlay" @click=${() => this._closeUsers()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgUsers()} Users</span>
+                  <div style="display:flex;gap:4px;align-items:center">
+                    <button class="icon-btn" title="Add user" @click=${() => { this.userAddMode = !this.userAddMode; this.userFormError = '' }}>${svgPlus()}</button>
+                    <button class="icon-btn" @click=${() => this._closeUsers()}>${svgClose()}</button>
+                  </div>
+                </div>
+                ${this.userAddMode ? html`
+                  <div style="padding:8px 12px;border-bottom:1px solid var(--bonnie-border);display:flex;flex-direction:column;gap:6px">
+                    <input class="sys-prompt-input" placeholder="Username" .value=${this.userFormUsername}
+                      @input=${(e: Event) => { this.userFormUsername = (e.target as HTMLInputElement).value }} />
+                    <input class="sys-prompt-input" type="password" placeholder="Password" .value=${this.userFormPassword}
+                      @input=${(e: Event) => { this.userFormPassword = (e.target as HTMLInputElement).value }} />
+                    <select class="sys-prompt-input" .value=${this.userFormRoleId}
+                      @change=${(e: Event) => { this.userFormRoleId = (e.target as HTMLSelectElement).value }}>
+                      <option value="">Select role...</option>
+                      ${this.roles.map((r) => html`<option value=${r.id} ?selected=${r.id === this.userFormRoleId}>${r.name}</option>`)}
+                    </select>
+                    ${this.userFormError ? html`
+                      <div style="color:var(--error-color,#F85149);font-size:0.78rem">${this.userFormError}</div>
+                    ` : nothing}
+                    <div style="display:flex;gap:6px;justify-content:flex-end">
+                      <button class="system-prompt-cancel-btn" @click=${() => { this.userAddMode = false; this.userFormError = '' }}>Cancel</button>
+                      <button class="system-prompt-save-btn" ?disabled=${this.userFormSaving} @click=${() => void this._createUser()}>
+                        ${this.userFormSaving ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ` : nothing}
+                ${this.usersLoading ? html`
+                  <div class="analytics-loading"><div class="loading-spinner"></div></div>
+                ` : this.users.length === 0 && !this.userAddMode ? html`
+                  <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--bonnie-ink-2)">
+                    No users found.
+                  </div>
+                ` : html`
+                  <div class="memories-list">
+                    ${this.users.map((u) => html`
+                      <div class="memory-item" style="flex-direction:column;align-items:flex-start;gap:4px">
+                        <div style="display:flex;align-items:center;gap:0.5rem;width:100%">
+                          <span class="memory-key" style="flex:1">${u.username}</span>
+                          ${u.role ? html`
+                            <span class="user-role-badge ${u.role.name === 'admin' ? 'admin' : ''}">${u.role.name}</span>
+                          ` : nothing}
+                          <!-- Change password button -->
+                          <button
+                            class="icon-btn"
+                            title="Change password"
+                            style="opacity:0.5"
+                            @click=${() => { this.userPasswordEditId = this.userPasswordEditId === u.id ? null : u.id; this.userPasswordDraft = '' }}
+                          >${svgKey()}</button>
+                          <!-- Delete button (disabled for self) -->
+                          ${u.id !== this._currentUserId ? html`
+                            <button
+                              class="icon-btn memory-delete-btn"
+                              aria-label="Delete user"
+                              title="Delete user"
+                              @click=${() => void this._deleteUser(u.id)}
+                            >${svgTrash()}</button>
+                          ` : nothing}
+                        </div>
+                        <span style="font-size:0.7rem;color:var(--bonnie-ink-2)">Created ${new Date(u.created_at * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        ${this.userPasswordEditId === u.id ? html`
+                          <div style="display:flex;gap:6px;width:100%;margin-top:2px">
+                            <input class="sys-prompt-input" type="password" placeholder="New password" style="flex:1"
+                              .value=${this.userPasswordDraft}
+                              @input=${(e: Event) => { this.userPasswordDraft = (e.target as HTMLInputElement).value }}
+                              @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') void this._changeUserPassword(u.id) }} />
+                            <button class="system-prompt-save-btn" style="flex-shrink:0" @click=${() => void this._changeUserPassword(u.id)}>Set</button>
+                            <button class="system-prompt-cancel-btn" style="flex-shrink:0" @click=${() => { this.userPasswordEditId = null }}>Cancel</button>
+                          </div>
+                        ` : nothing}
+                      </div>
+                    `)}
+                  </div>
+                `}
+              </div>
+            </div>
+          ` : nothing}
+
           <!-- Header -->
           <div class="header">
             ${!this.isWide
@@ -2861,6 +3047,15 @@ export class BonnieCard extends LitElement {
                 title="Plugin registry (admin)"
                 @click=${() => this.showPlugins ? this._closePlugins() : void this._openPlugins()}
               >${svgPuzzle()}</button>
+            ` : nothing}
+            <!-- User admin button (admin only) -->
+            ${this.isAdmin ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showUsers })}
+                aria-label="Users"
+                title="User management (admin)"
+                @click=${() => this.showUsers ? this._closeUsers() : void this._openUsers()}
+              >${svgUsers()}</button>
             ` : nothing}
             ${this.isWide
               ? html`<button class="icon-btn" aria-label=${t('newConversation')} @click=${this._newSession} title="${t('newConversation')} (Cmd+N)">
@@ -3304,6 +3499,11 @@ function svgGear(): TemplateResult {
 
 function svgPuzzle(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4c-1.1 0-2 .9-2 2v4h1.5a2.5 2.5 0 0 1 0 5H2v4c0 1.1.9 2 2 2h4v-1.5a2.5 2.5 0 0 1 5 0V21h4c1.1 0 2-.9 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg>`
+}
+
+/** Users icon (Feather) */
+function svgUsers(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
 }
 
 /** Return a simple SVG icon for a template id/name string. */

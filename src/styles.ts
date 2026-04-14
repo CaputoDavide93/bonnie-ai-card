@@ -2923,4 +2923,19 @@ export const cardStyles = css`
     margin: 8px 0;
     overflow: hidden;
   }
+
+  /* ── User admin panel ───────────────────────────────────────────────────── */
+  .user-role-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+  }
+  .user-role-badge.admin {
+    background: var(--bonnie-accent);
+    color: #0D1117;
+  }
 `

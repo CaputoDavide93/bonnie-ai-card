@@ -446,3 +446,38 @@ export async function respondPermission(
     // Best-effort
   }
 }
+
+// ── User admin (admin only) ──────────────────────────────────────────────────
+
+export interface UserView {
+  id: string
+  username: string
+  role: { id: string; name: string } | null
+  created_at: number
+}
+
+export interface RoleView {
+  id: string
+  name: string
+  is_builtin: boolean
+}
+
+export async function listUsers(baseUrl: string, token: string): Promise<UserView[]> {
+  return request<UserView[]>(`${baseUrl}/api/users`, { token })
+}
+
+export async function createUser(baseUrl: string, token: string, data: { username: string; password: string; role_id: string }): Promise<UserView> {
+  return request<UserView>(`${baseUrl}/api/users`, { method: 'POST', token, body: JSON.stringify(data) })
+}
+
+export async function deleteUser(baseUrl: string, token: string, userId: string): Promise<void> {
+  return request<void>(`${baseUrl}/api/users/${userId}`, { method: 'DELETE', token })
+}
+
+export async function changePassword(baseUrl: string, token: string, userId: string, password: string): Promise<void> {
+  return request<void>(`${baseUrl}/api/users/${userId}/password`, { method: 'POST', token, body: JSON.stringify({ password }) })
+}
+
+export async function listRoles(baseUrl: string, token: string): Promise<RoleView[]> {
+  return request<RoleView[]>(`${baseUrl}/api/roles`, { token })
+}
