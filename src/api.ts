@@ -121,10 +121,32 @@ export async function cancelStream(
   }
 }
 
-/** Build SSE URL — bearer passed as query param because EventSource can't set headers */
-export function streamUrl(baseUrl: string, token: string, turnId: string): string {
+/**
+ * Request a short-lived single-use SSE ticket for the given turn.
+ * The ticket is used instead of a bearer token in the SSE URL so that
+ * long-lived session tokens never appear in server access logs.
+ */
+export async function requestStreamTicket(
+  baseUrl: string,
+  token: string,
+  turnId: string,
+): Promise<string> {
+  const res = await request<{ ticket: string }>(`${baseUrl}/api/stream-ticket`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ turn_id: turnId }),
+  })
+  return res.ticket
+}
+
+/** Build SSE URL using a pre-fetched ticket (preferred) or bearer fallback */
+export function streamUrl(baseUrl: string, ticketOrToken: string, turnId: string, useTicket = false): string {
   const url = new URL(`${baseUrl}/api/stream/${turnId}`)
-  url.searchParams.set('bearer', token)
+  if (useTicket) {
+    url.searchParams.set('ticket', ticketOrToken)
+  } else {
+    url.searchParams.set('bearer', ticketOrToken)
+  }
   return url.toString()
 }
 

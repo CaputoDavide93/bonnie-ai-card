@@ -29,6 +29,7 @@ import {
   postChat,
   cancelStream,
   streamUrl,
+  requestStreamTicket,
   updateSessionTitle,
   updateSessionSystemPrompt,
   searchSession,
@@ -189,6 +190,12 @@ export class BonnieCard extends LitElement {
   // Feature T4-8: Pin/archive
   @state() private showArchivedSessions = false
   @state() private archivedSessions: Session[] = []
+
+  // Feature T4-9: Cumulative session token counter
+  @state() private sessionTotalInputTokens = 0
+  @state() private sessionTotalOutputTokens = 0
+  @state() private sessionTotalCostUsd = 0
+  @state() private sessionTurnCount = 0
 
   private _fileInput: HTMLInputElement | null = null
 
@@ -365,6 +372,8 @@ export class BonnieCard extends LitElement {
     this.showMessageSearch = false
     this.messageSearchQuery = ''
     this.messageSearchResults = []
+    // T4-9: reset cumulative token counter for this session
+    this._resetSessionStats()
     clearMarkdownCache()
 
     const session = this.sessions.find((s) => s.id === id)
@@ -400,6 +409,8 @@ export class BonnieCard extends LitElement {
     this.messageSearchResults = []
     this.activeSystemPrompt = null
     this.systemPromptDraft = ''
+    // T4-9: reset cumulative token counter for new session
+    this._resetSessionStats()
     clearMarkdownCache()
     try {
       const ts = new Date().toLocaleString('en-GB', {
@@ -691,7 +702,7 @@ export class BonnieCard extends LitElement {
       )
       this.streamingTurnId = turn_id
       this._turnStartTime = Date.now()
-      this._openStream(turn_id)
+      void this._openStream(turn_id)
     } catch (e) {
       this._handleApiError(e)
       this.streamingTurnId = null
@@ -797,7 +808,7 @@ export class BonnieCard extends LitElement {
       // Open the new forked session
       await this._openSession(result.session_id)
       // Connect to the already-running turn stream
-      this._openStream(result.turn_id)
+      void this._openStream(result.turn_id)
       this.streamingTurnId = result.turn_id
       this._showToast('Conversation forked')
 
@@ -806,9 +817,17 @@ export class BonnieCard extends LitElement {
     }
   }
 
-  private _openStream(turnId: string): void {
+  private async _openStream(turnId: string): Promise<void> {
     this._closeStream()
-    const url = streamUrl(this.config.backend_url, this.sessionToken!, turnId)
+    // Fetch a short-lived ticket so the session token never appears in the SSE URL
+    let url: string
+    try {
+      const ticket = await requestStreamTicket(this.config.backend_url, this.sessionToken!, turnId)
+      url = streamUrl(this.config.backend_url, ticket, turnId, true)
+    } catch {
+      // Fall back to bearer-in-query-param if ticket endpoint is unavailable
+      url = streamUrl(this.config.backend_url, this.sessionToken!, turnId)
+    }
     const es = new EventSource(url)
     this._eventSource = es
 
@@ -896,6 +915,10 @@ export class BonnieCard extends LitElement {
           }
           return b
         })
+        // T4-9: accumulate session-level token totals
+        if (Object.keys(stats).length > 0) {
+          this._accumulateSessionStats(stats)
+        }
         this._finishStream()
         // Feature 3: auto-title from first user message
         void this._maybeAutoTitle()
@@ -951,6 +974,42 @@ export class BonnieCard extends LitElement {
       this.visibleEnd = this.bubbles.length
     }
     void this._loadSessions()
+  }
+
+  // ── Feature T4-9: Session token counter helpers ──────────────────────────
+
+  private _resetSessionStats(): void {
+    this.sessionTotalInputTokens = 0
+    this.sessionTotalOutputTokens = 0
+    this.sessionTotalCostUsd = 0
+    this.sessionTurnCount = 0
+  }
+
+  private _accumulateSessionStats(stats: TurnStats): void {
+    if (stats.inputTokens) this.sessionTotalInputTokens += stats.inputTokens
+    if (stats.outputTokens) this.sessionTotalOutputTokens += stats.outputTokens
+    if (stats.costUsd) this.sessionTotalCostUsd += stats.costUsd
+    this.sessionTurnCount += 1
+  }
+
+  private _formatTokenCount(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
+    return String(n)
+  }
+
+  private _renderSessionTokenBar(): TemplateResult | typeof nothing {
+    const total = this.sessionTotalInputTokens + this.sessionTotalOutputTokens
+    if (total === 0) return nothing
+    const hasCost = this.sessionTotalCostUsd > 0
+    return html`
+      <div class="session-token-bar">
+        <span class="token-bar-tokens">${this._formatTokenCount(total)} tokens</span>
+        ${hasCost ? html`<span class="token-bar-sep">·</span><span class="token-bar-cost">$${this.sessionTotalCostUsd.toFixed(4)}</span>` : nothing}
+        <span class="token-bar-sep">·</span>
+        <span class="token-bar-turns">${this.sessionTurnCount} ${this.sessionTurnCount === 1 ? 'turn' : 'turns'}</span>
+      </div>
+    `
   }
 
   // ── Feature T4-3: Virtualization helpers ─────────────────────────────────
@@ -2256,6 +2315,9 @@ export class BonnieCard extends LitElement {
                     </div>
                   </div>`
                 : nothing}
+
+              <!-- Feature T4-9: Cumulative session token counter -->
+              ${this._renderSessionTokenBar()}
 
               <!-- Composer -->
               <div class="composer-wrap">
