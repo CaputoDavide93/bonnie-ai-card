@@ -2585,4 +2585,222 @@ export const cardStyles = css`
     color: var(--bonnie-ink-3);
     opacity: 0.5;
   }
+
+  /* ── Feature 14: Offline banner ──────────────────────────────── */
+  .offline-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 12px 6px;
+    padding: 8px 12px;
+    background: color-mix(in srgb, #F59E0B 15%, transparent);
+    border: 1px solid color-mix(in srgb, #F59E0B 40%, transparent);
+    border-radius: var(--bonnie-radius-sm);
+    font-size: 12.5px;
+    color: #F59E0B;
+    animation: banner-in 0.2s ease;
+  }
+
+  @keyframes banner-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .offline-banner svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    stroke: #F59E0B;
+  }
+
+  .offline-banner-text {
+    flex: 1;
+    font-weight: 500;
+  }
+
+  .offline-banner-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #F59E0B;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    opacity: 0.8;
+  }
+
+  .offline-banner-dismiss:hover {
+    opacity: 1;
+  }
+
+  /* ── Feature 13: Analytics overlay ──────────────────────────── */
+  .analytics-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 50;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 20px 16px;
+    border-radius: var(--bonnie-radius);
+    overflow-y: auto;
+  }
+
+  .analytics-panel {
+    background: var(--bonnie-surface-1);
+    border: 1px solid var(--bonnie-border);
+    border-radius: var(--bonnie-radius-sm);
+    width: 100%;
+    max-width: 560px;
+    padding: 0 0 16px;
+    box-shadow: var(--bonnie-shadow);
+  }
+
+  .analytics-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--bonnie-border-soft);
+  }
+
+  .analytics-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bonnie-ink-0);
+  }
+
+  .analytics-title svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--bonnie-accent);
+  }
+
+  .analytics-loading {
+    display: flex;
+    justify-content: center;
+    padding: 32px;
+  }
+
+  .analytics-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--bonnie-ink-2);
+    font-size: 13px;
+  }
+
+  .analytics-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--bonnie-border-soft);
+    margin: 0 0 12px;
+  }
+
+  .analytics-stat {
+    background: var(--bonnie-surface-1);
+    padding: 14px 12px;
+    text-align: center;
+  }
+
+  .analytics-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--bonnie-accent);
+    font-family: ui-monospace, 'SFMono-Regular', monospace;
+    line-height: 1.2;
+  }
+
+  .analytics-stat-label {
+    font-size: 11px;
+    color: var(--bonnie-ink-2);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .analytics-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--bonnie-ink-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 12px 16px 6px;
+  }
+
+  /* Bar chart */
+  .analytics-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 0 16px 4px;
+    height: 80px;
+  }
+
+  .chart-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+  }
+
+  .chart-bar-wrap {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .chart-bar {
+    width: 100%;
+    min-height: 2px;
+    background: var(--bonnie-accent);
+    border-radius: 3px 3px 0 0;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+  }
+
+  .chart-bar:hover {
+    opacity: 1;
+  }
+
+  .chart-label {
+    font-size: 9px;
+    color: var(--bonnie-ink-3);
+    margin-top: 3px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* Per-user table */
+  .analytics-table {
+    width: calc(100% - 32px);
+    margin: 0 16px;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  .analytics-table th {
+    text-align: left;
+    color: var(--bonnie-ink-2);
+    font-weight: 600;
+    padding: 4px 8px 6px;
+    border-bottom: 1px solid var(--bonnie-border-soft);
+  }
+
+  .analytics-table td {
+    padding: 5px 8px;
+    color: var(--bonnie-ink-1);
+    border-bottom: 1px solid var(--bonnie-border-soft);
+    font-family: ui-monospace, 'SFMono-Regular', monospace;
+  }
+
+  .analytics-table tr:last-child td {
+    border-bottom: none;
+  }
 `

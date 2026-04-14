@@ -290,6 +290,33 @@ export async function fetchTemplates(baseUrl: string): Promise<ConversationTempl
   }
 }
 
+// ── Analytics (admin only) ────────────────────────────────────────────────────
+
+export interface AuditStats {
+  total_turns: number
+  total_cost_usd: number
+  avg_duration_ms: number
+  per_user: { user_id: string; turns: number; cost_usd: number }[]
+}
+
+export interface AuditDailyEntry {
+  date: string
+  turns: number
+  cost: number
+}
+
+export async function fetchAuditStats(baseUrl: string, token: string): Promise<AuditStats> {
+  return request<AuditStats>(`${baseUrl}/api/admin/audit/stats`, { token })
+}
+
+export async function fetchAuditDaily(
+  baseUrl: string,
+  token: string,
+  days = 7,
+): Promise<AuditDailyEntry[]> {
+  return request<AuditDailyEntry[]>(`${baseUrl}/api/admin/audit/daily?days=${days}`, { token })
+}
+
 /** Respond to a permission request */
 export async function respondPermission(
   baseUrl: string,

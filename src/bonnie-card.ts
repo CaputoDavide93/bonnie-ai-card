@@ -17,6 +17,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
 import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult } from './types.js'
+import type { AuditStats, AuditDailyEntry } from './api.js'
 import {
   ApiError,
   kioskExchange,
@@ -39,6 +40,8 @@ import {
   forkSession,
   patchSession,
   fetchTemplates,
+  fetchAuditStats,
+  fetchAuditDaily,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -205,6 +208,16 @@ export class BonnieCard extends LitElement {
   // Conversation templates (Feature 11)
   @state() private templates: ConversationTemplate[] = []
 
+  // Feature 13: Analytics dashboard
+  @state() private showAnalytics = false
+  @state() private isAdmin = false
+  @state() private analyticsStats: AuditStats | null = null
+  @state() private analyticsDaily: AuditDailyEntry[] = []
+  @state() private analyticsLoading = false
+
+  // Feature 14: Offline mode banner
+  @state() private offlineBanner = false
+
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
@@ -321,6 +334,8 @@ export class BonnieCard extends LitElement {
       const models: string[] = user?.role?.permissions?.limits?.allowed_models ?? []
       this.allowedModels = models
       this.selectedModel = this.config.model ?? models[0] ?? ''
+      // Feature 13: detect admin role
+      this.isAdmin = user?.role?.name === 'admin'
       const [,templates] = await Promise.all([
         this._loadSessions(),
         fetchTemplates(this.config.backend_url),
@@ -344,6 +359,36 @@ export class BonnieCard extends LitElement {
     } catch (e) {
       this._handleApiError(e)
     }
+  }
+
+  // ── Feature 13: Analytics ─────────────────────────────────────────────────
+
+  private async _openAnalytics(): Promise<void> {
+    if (!this.sessionToken) return
+    this.showAnalytics = true
+    this.analyticsLoading = true
+    try {
+      const [stats, daily] = await Promise.all([
+        fetchAuditStats(this.config.backend_url, this.sessionToken),
+        fetchAuditDaily(this.config.backend_url, this.sessionToken, 7),
+      ])
+      this.analyticsStats = stats
+      this.analyticsDaily = daily
+    } catch {
+      // Non-fatal — show whatever loaded
+    } finally {
+      this.analyticsLoading = false
+    }
+  }
+
+  private _closeAnalytics(): void {
+    this.showAnalytics = false
+  }
+
+  // ── Feature 14: Offline banner ────────────────────────────────────────────
+
+  private _dismissOfflineBanner(): void {
+    this.offlineBanner = false
   }
 
   private _filterSessions(): void {
@@ -935,6 +980,11 @@ export class BonnieCard extends LitElement {
       }
 
       if (parsed.type === 'assistant') {
+        // Feature 14: detect offline fallback — backend marks these with `offline: true`
+        const isOfflineFallback = !!(parsed as any).offline
+        if (isOfflineFallback) {
+          this.offlineBanner = true
+        }
         for (const block of parsed.message.content) {
           if (block.type === 'text') {
             if (!currentAssistantId) {
@@ -1010,6 +1060,10 @@ export class BonnieCard extends LitElement {
         // T4-9: accumulate session-level token totals
         if (Object.keys(stats).length > 0) {
           this._accumulateSessionStats(stats)
+        }
+        // Feature 14: clear offline banner on successful turn
+        if (parsed.subtype !== 'error') {
+          this.offlineBanner = false
         }
         this._finishStream()
         // Feature 3: auto-title from first user message
@@ -2120,6 +2174,83 @@ export class BonnieCard extends LitElement {
             </div>
           ` : nothing}
 
+          <!-- Feature 13: Analytics overlay -->
+          ${this.showAnalytics ? html`
+            <div class="analytics-overlay" @click=${() => this._closeAnalytics()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgBarChart()} Usage Analytics</span>
+                  <button class="icon-btn" @click=${() => this._closeAnalytics()}>${svgClose()}</button>
+                </div>
+                ${this.analyticsLoading ? html`
+                  <div class="analytics-loading"><div class="loading-spinner"></div></div>
+                ` : this.analyticsStats ? html`
+                  <!-- Summary row -->
+                  <div class="analytics-summary">
+                    <div class="analytics-stat">
+                      <div class="analytics-stat-value">${this.analyticsStats.total_turns.toLocaleString()}</div>
+                      <div class="analytics-stat-label">Total turns</div>
+                    </div>
+                    <div class="analytics-stat">
+                      <div class="analytics-stat-value">$${this.analyticsStats.total_cost_usd.toFixed(3)}</div>
+                      <div class="analytics-stat-label">Total cost</div>
+                    </div>
+                    <div class="analytics-stat">
+                      <div class="analytics-stat-value">${this.analyticsStats.avg_duration_ms > 0 ? (this.analyticsStats.avg_duration_ms / 1000).toFixed(1) + 's' : '—'}</div>
+                      <div class="analytics-stat-label">Avg response</div>
+                    </div>
+                    <div class="analytics-stat">
+                      <div class="analytics-stat-value">${(() => {
+                        const today = new Date().toISOString().slice(0, 10)
+                        return (this.analyticsDaily.find((d) => d.date === today)?.turns ?? 0).toString()
+                      })()}</div>
+                      <div class="analytics-stat-label">Turns today</div>
+                    </div>
+                  </div>
+
+                  <!-- Daily bar chart (last 7 days) -->
+                  ${this.analyticsDaily.length > 0 ? html`
+                    <div class="analytics-section-label">Daily turns (last 7 days)</div>
+                    <div class="analytics-chart">
+                      ${(() => {
+                        const maxTurns = Math.max(...this.analyticsDaily.map((d) => d.turns), 1)
+                        return this.analyticsDaily.map((d) => {
+                          const pct = Math.round((d.turns / maxTurns) * 100)
+                          const label = d.date.slice(5) // MM-DD
+                          return html`
+                            <div class="chart-col">
+                              <div class="chart-bar-wrap">
+                                <div class="chart-bar" style="height:${pct}%" title="${d.turns} turns on ${d.date}"></div>
+                              </div>
+                              <div class="chart-label">${label}</div>
+                            </div>
+                          `
+                        })
+                      })()}
+                    </div>
+                  ` : nothing}
+
+                  <!-- Per-user table -->
+                  ${this.analyticsStats.per_user.length > 0 ? html`
+                    <div class="analytics-section-label">Per user</div>
+                    <table class="analytics-table">
+                      <thead><tr><th>User</th><th>Turns</th><th>Cost</th></tr></thead>
+                      <tbody>
+                        ${this.analyticsStats.per_user.map((u) => html`
+                          <tr>
+                            <td>${u.user_id}</td>
+                            <td>${u.turns}</td>
+                            <td>$${u.cost_usd.toFixed(4)}</td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  ` : nothing}
+                ` : html`<div class="analytics-empty">No data yet.</div>`}
+              </div>
+            </div>
+          ` : nothing}
+
           <!-- Header -->
           <div class="header">
             ${!this.isWide
@@ -2245,6 +2376,15 @@ export class BonnieCard extends LitElement {
                 </div>
               </div>
             </div>
+            <!-- Feature 13: Analytics button (admin only) -->
+            ${this.isAdmin ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showAnalytics })}
+                aria-label="Analytics"
+                title="Usage analytics (admin)"
+                @click=${() => this.showAnalytics ? this._closeAnalytics() : void this._openAnalytics()}
+              >${svgBarChart()}</button>
+            ` : nothing}
             ${this.isWide
               ? html`<button class="icon-btn" aria-label=${t('newConversation')} @click=${this._newSession} title="${t('newConversation')} (Cmd+N)">
                   ${svgPlus()}
@@ -2405,6 +2545,15 @@ export class BonnieCard extends LitElement {
                   </button>`
                 : nothing}
 
+              <!-- Feature 14: Offline mode banner -->
+              ${this.offlineBanner ? html`
+                <div class="offline-banner">
+                  <span class="offline-banner-icon">${svgAlertCircle()}</span>
+                  <span class="offline-banner-text">Bonnie is in offline mode — limited responses</span>
+                  <button class="offline-banner-dismiss" @click=${() => this._dismissOfflineBanner()}>×</button>
+                </div>
+              ` : nothing}
+
               <!-- Error message -->
               ${this.errorMessage
                 ? html`<div class="error-card" style="margin:0 12px 8px">
@@ -2512,6 +2661,10 @@ export class BonnieCard extends LitElement {
 }
 
 // ── SVG icons (inline, no external dep) ───────────────────────────────────
+
+function svgBarChart(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/></svg>`
+}
 
 function svgMenu(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`
