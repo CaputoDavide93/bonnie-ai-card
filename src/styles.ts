@@ -2455,4 +2455,29 @@ export const cardStyles = css`
     from { opacity: 0; transform: translateX(-50%) translateY(8px); }
     to   { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
+
+  /* ── Feature T4-9: Session token counter bar ──────────────────────── */
+  .session-token-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 14px;
+    flex-shrink: 0;
+    background: transparent;
+  }
+
+  .token-bar-tokens,
+  .token-bar-cost,
+  .token-bar-turns {
+    font-size: 10.5px;
+    font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
+    color: var(--bonnie-ink-3);
+    letter-spacing: 0.01em;
+  }
+
+  .token-bar-sep {
+    font-size: 10.5px;
+    color: var(--bonnie-ink-3);
+    opacity: 0.5;
+  }
 `
