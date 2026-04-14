@@ -206,7 +206,6 @@ export class BonnieCard extends LitElement {
   private _eventSource: EventSource | null = null
   private _resizeObserver: ResizeObserver | null = null
   private _userScrolled = false
-  private _scrollTimeout: ReturnType<typeof setTimeout> | null = null
   private _lastUserMessageText = ''
   private _speechRecognition: any = null
   private _turnStartTime: number | null = null
@@ -246,6 +245,14 @@ export class BonnieCard extends LitElement {
     this._topSentinelObserver?.disconnect()
     document.removeEventListener('keydown', this._onGlobalKeydown)
     this._stopListening()
+    if (this._toastTimer) { clearTimeout(this._toastTimer); this._toastTimer = null }
+    if (this._searchDebounceTimer) { clearTimeout(this._searchDebounceTimer); this._searchDebounceTimer = null }
+    // Remove paste listener attached in _setupPasteListener
+    if (this._onPaste) {
+      const ta = this.shadowRoot?.querySelector<HTMLTextAreaElement>('.composer-textarea')
+      if (ta) ta.removeEventListener('paste', this._onPaste as EventListener)
+      this._onPaste = null
+    }
   }
 
   /** Revoke blob: URLs from attachment previews to prevent memory leaks. */
@@ -629,9 +636,17 @@ export class BonnieCard extends LitElement {
   }
 
   private _highlightSnippet(snippet: string): string {
-    if (!this.messageSearchQuery) return snippet
-    const escaped = this.messageSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return snippet.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>')
+    // HTML-escape the server-supplied snippet before inserting <mark> tags
+    // to prevent XSS via crafted search result snippets.
+    const safe = snippet
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+    if (!this.messageSearchQuery) return safe
+    const escapedQuery = this.messageSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return safe.replace(new RegExp(`(${escapedQuery})`, 'gi'), '<mark>$1</mark>')
   }
 
   private _turnsToBubbles(turns: RawTurn[]): Bubble[] {
@@ -772,11 +787,11 @@ export class BonnieCard extends LitElement {
       await patchSession(this.config.backend_url, this.sessionToken, s.id, { archived: true })
       // If current session was archived, open a new one
       if (this.activeSessionId === s.id) {
-        this._newSession()
+        await this._newSession()
       }
       await this._loadSessions()
       if (this.showArchivedSessions) await this._loadArchivedSessions()
-    } catch {}
+    } catch (e) { this._handleApiError(e) }
   }
 
   private async _unarchiveSession(s: Session, e: Event): Promise<void> {
@@ -786,7 +801,7 @@ export class BonnieCard extends LitElement {
       await patchSession(this.config.backend_url, this.sessionToken, s.id, { archived: false })
       await this._loadSessions()
       await this._loadArchivedSessions()
-    } catch {}
+    } catch (e) { this._handleApiError(e) }
   }
 
   private async _loadArchivedSessions(): Promise<void> {
@@ -835,9 +850,10 @@ export class BonnieCard extends LitElement {
       await this._loadSessions()
       // Open the new forked session
       await this._openSession(result.session_id)
-      // Connect to the already-running turn stream
-      void this._openStream(result.turn_id)
+      // Set streamingTurnId BEFORE opening the stream so any synchronous
+      // render triggered inside _openStream sees the correct turn ID.
       this.streamingTurnId = result.turn_id
+      void this._openStream(result.turn_id)
       this._showToast('Conversation forked') // intentionally not translated (dev message)
 
     } catch (e) {
@@ -2054,11 +2070,6 @@ export class BonnieCard extends LitElement {
                 </div>
               </div>
             </div>
-          ` : nothing}
-
-          <!-- Toast notification (fork/top-level) -->
-          ${this._toastMessage ? html`
-            <div class="toast-notification">${this._toastMessage}</div>
           ` : nothing}
 
           <!-- Header -->

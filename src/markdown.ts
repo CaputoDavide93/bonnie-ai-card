@@ -144,6 +144,9 @@ function sanitize(html: string): string {
 
 // ── Markdown memoization cache (Feature T4-4) ─────────────────────────────
 // Keyed by raw text string, value is sanitized HTML. Cleared on session switch.
+// Hard cap at 500 entries (evict oldest first) to prevent unbounded growth when
+// the card stays mounted across many long sessions.
+const _MARKDOWN_CACHE_MAX = 500
 const _markdownCache = new Map<string, string>()
 
 export function renderMarkdown(text: string): string {
@@ -151,6 +154,10 @@ export function renderMarkdown(text: string): string {
   if (cached !== undefined) return cached
   const raw = marked.parse(text) as string
   const result = sanitize(raw)
+  if (_markdownCache.size >= _MARKDOWN_CACHE_MAX) {
+    // Map preserves insertion order — delete the first (oldest) key
+    _markdownCache.delete(_markdownCache.keys().next().value!)
+  }
   _markdownCache.set(text, result)
   return result
 }
