@@ -346,6 +346,7 @@ export class BonnieCard extends LitElement {
       await deleteSession(this.config.backend_url, this.sessionToken, id)
       this.sessions = this.sessions.filter((s) => s.id !== id)
       if (this.activeSessionId === id) {
+        this._revokeAttachmentUrls(this.bubbles)
         this.activeSessionId = null
         this.activeSessionTitle = ''
         this.bubbles = []
@@ -925,8 +926,10 @@ export class BonnieCard extends LitElement {
   private _removeAttachment(uploadId: string): void {
     const att = this.pendingAttachments.find((a) => a.uploadId === uploadId)
     if (!att) return
-    // Revoke preview URL
-    URL.revokeObjectURL(att.localPreviewUrl)
+    // Revoke preview URL — skip for error chips (auto-removal timer handles those)
+    if (!uploadId.startsWith('error-') && att.localPreviewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(att.localPreviewUrl)
+    }
     this.pendingAttachments = this.pendingAttachments.filter((a) => a.uploadId !== uploadId)
     // Best-effort delete from server (only for successfully uploaded files)
     if (!uploadId.startsWith('uploading-') && !uploadId.startsWith('error-') && this.sessionToken) {
