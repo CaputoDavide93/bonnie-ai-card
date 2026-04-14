@@ -2803,4 +2803,84 @@ export const cardStyles = css`
   .analytics-table tr:last-child td {
     border-bottom: none;
   }
+
+  /* ── Feature 6: Memories panel ─────────────────────────────────────────── */
+  .memories-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--bonnie-border-soft);
+    overflow-y: auto;
+    max-height: 360px;
+  }
+
+  .memory-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bonnie-surface-1);
+    padding: 10px 14px;
+  }
+
+  .memory-item:hover {
+    background: var(--bonnie-surface-2);
+  }
+
+  .memory-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .memory-key {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--bonnie-accent);
+    font-family: ui-monospace, 'SFMono-Regular', monospace;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .memory-value {
+    font-size: 13px;
+    color: var(--bonnie-ink-1);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .memory-badge {
+    font-size: 10px;
+    background: var(--bonnie-accent);
+    color: #000;
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .memory-delete-btn {
+    flex-shrink: 0;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+  }
+
+  .memory-delete-btn:hover {
+    opacity: 1;
+  }
+
+  /* ── Feature 8: bonnie-chart ─────────────────────────────────────────────── */
+  .bonnie-chart-wrap {
+    background: var(--bonnie-surface-1);
+    border: 1px solid var(--bonnie-border-soft);
+    border-radius: 8px;
+    padding: 12px 8px 8px;
+    margin: 8px 0;
+    overflow: hidden;
+  }
 `

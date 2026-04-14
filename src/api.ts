@@ -317,6 +317,32 @@ export async function fetchAuditDaily(
   return request<AuditDailyEntry[]>(`${baseUrl}/api/admin/audit/daily?days=${days}`, { token })
 }
 
+// ── Memories (Feature 6) ──────────────────────────────────────────────────────
+
+export interface Memory {
+  id: string
+  user_id: string
+  key: string
+  value: string
+  source: 'user' | 'inferred'
+  created_at: number
+  updated_at: number
+}
+
+export async function listMemories(baseUrl: string, token: string): Promise<Memory[]> {
+  return request<Memory[]>(`${baseUrl}/api/memories`, { token })
+}
+
+export async function deleteMemory(baseUrl: string, token: string, memoryId: string): Promise<void> {
+  return request<void>(`${baseUrl}/api/memories/${memoryId}`, { method: 'DELETE', token })
+}
+
+export async function searchMemories(baseUrl: string, token: string, q: string): Promise<Memory[]> {
+  const url = new URL(`${baseUrl}/api/memories/search`)
+  url.searchParams.set('q', q)
+  return request<Memory[]>(url.toString(), { token })
+}
+
 /** Respond to a permission request */
 export async function respondPermission(
   baseUrl: string,

@@ -17,7 +17,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
 import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult } from './types.js'
-import type { AuditStats, AuditDailyEntry } from './api.js'
+import type { AuditStats, AuditDailyEntry, Memory } from './api.js'
 import {
   ApiError,
   kioskExchange,
@@ -42,6 +42,8 @@ import {
   fetchTemplates,
   fetchAuditStats,
   fetchAuditDaily,
+  listMemories,
+  deleteMemory,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -218,6 +220,11 @@ export class BonnieCard extends LitElement {
   // Feature 14: Offline mode banner
   @state() private offlineBanner = false
 
+  // Feature 6 (Conversation Memory): memories panel
+  @state() private showMemories = false
+  @state() private memories: Memory[] = []
+  @state() private memoriesLoading = false
+
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
@@ -383,6 +390,34 @@ export class BonnieCard extends LitElement {
 
   private _closeAnalytics(): void {
     this.showAnalytics = false
+  }
+
+  // ── Feature 6: Conversation Memory ────────────────────────────────────────
+
+  private async _openMemories(): Promise<void> {
+    this.showMemories = true
+    this.memoriesLoading = true
+    try {
+      this.memories = await listMemories(this.config.backend_url, this.sessionToken!)
+    } catch {
+      this.memories = []
+    } finally {
+      this.memoriesLoading = false
+    }
+  }
+
+  private _closeMemories(): void {
+    this.showMemories = false
+  }
+
+  private async _deleteMemory(memId: string): Promise<void> {
+    if (!this.sessionToken) return
+    try {
+      await deleteMemory(this.config.backend_url, this.sessionToken, memId)
+      this.memories = this.memories.filter((m) => m.id !== memId)
+    } catch {
+      // best-effort; ignore
+    }
   }
 
   // ── Feature 14: Offline banner ────────────────────────────────────────────
@@ -2251,6 +2286,43 @@ export class BonnieCard extends LitElement {
             </div>
           ` : nothing}
 
+          <!-- Feature 6: Memories overlay -->
+          ${this.showMemories ? html`
+            <div class="analytics-overlay" @click=${() => this._closeMemories()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgMemory()} Saved Memories</span>
+                  <button class="icon-btn" @click=${() => this._closeMemories()}>${svgClose()}</button>
+                </div>
+                ${this.memoriesLoading ? html`
+                  <div class="analytics-loading"><div class="loading-spinner"></div></div>
+                ` : this.memories.length === 0 ? html`
+                  <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--muted)">
+                    No memories saved yet. Bonnie will automatically save facts you tell her.
+                  </div>
+                ` : html`
+                  <div class="memories-list">
+                    ${this.memories.map((m) => html`
+                      <div class="memory-item">
+                        <div class="memory-content">
+                          <span class="memory-key">${m.key}</span>
+                          <span class="memory-value">${m.value}</span>
+                          ${m.source === 'inferred' ? html`<span class="memory-badge">auto</span>` : nothing}
+                        </div>
+                        <button
+                          class="icon-btn memory-delete-btn"
+                          aria-label="Delete memory"
+                          title="Delete"
+                          @click=${() => void this._deleteMemory(m.id)}
+                        >${svgClose()}</button>
+                      </div>
+                    `)}
+                  </div>
+                `}
+              </div>
+            </div>
+          ` : nothing}
+
           <!-- Header -->
           <div class="header">
             ${!this.isWide
@@ -2376,6 +2448,15 @@ export class BonnieCard extends LitElement {
                 </div>
               </div>
             </div>
+            <!-- Feature 6: Memories button -->
+            ${this.sessionToken ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showMemories })}
+                aria-label="Memories"
+                title="Saved memories"
+                @click=${() => this.showMemories ? this._closeMemories() : void this._openMemories()}
+              >${svgMemory()}</button>
+            ` : nothing}
             <!-- Feature 13: Analytics button (admin only) -->
             ${this.isAdmin ? html`
               <button
@@ -2813,6 +2894,11 @@ function svgKey(): TemplateResult {
 
 function svgSystemPrompt(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><polyline points="9 16 12 13 15 16"/><line x1="12" y1="13" x2="12" y2="19"/></svg>`
+}
+
+/** Brain/memory icon (Feature 6) */
+function svgMemory(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.44-3.14Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.44-3.14Z"/></svg>`
 }
 
 /** Return a simple SVG icon for a template id/name string. */
