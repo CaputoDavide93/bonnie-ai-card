@@ -21,6 +21,7 @@ import {
   ApiError,
   kioskExchange,
   listSessions,
+  listSessionsArchived,
   createSession,
   renameSession,
   getSession,
@@ -34,6 +35,8 @@ import {
   respondPermission,
   uploadImage,
   deleteUpload,
+  forkSession,
+  patchSession,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -182,6 +185,10 @@ export class BonnieCard extends LitElement {
   @state() private visibleStart = 0
   @state() private visibleEnd = 0
   private _topSentinelObserver: IntersectionObserver | null = null
+
+  // Feature T4-8: Pin/archive
+  @state() private showArchivedSessions = false
+  @state() private archivedSessions: Session[] = []
 
   private _fileInput: HTMLInputElement | null = null
 
@@ -707,11 +714,96 @@ export class BonnieCard extends LitElement {
     this.editDraft = ''
   }
 
+  // ── Pin / archive ─────────────────────────────────────────────────────────
+
+  private async _togglePin(s: Session, e: Event): Promise<void> {
+    e.stopPropagation()
+    if (!this.sessionToken) return
+    const newPinned = !(s.pinned === 1)
+    try {
+      await patchSession(this.config.backend_url, this.sessionToken, s.id, { pinned: newPinned })
+      await this._loadSessions()
+    } catch {}
+  }
+
+  private async _archiveSession(s: Session, e: Event): Promise<void> {
+    e.stopPropagation()
+    if (!this.sessionToken) return
+    try {
+      await patchSession(this.config.backend_url, this.sessionToken, s.id, { archived: true })
+      // If current session was archived, open a new one
+      if (this.activeSessionId === s.id) {
+        this._newSession()
+      }
+      await this._loadSessions()
+      if (this.showArchivedSessions) await this._loadArchivedSessions()
+    } catch {}
+  }
+
+  private async _unarchiveSession(s: Session, e: Event): Promise<void> {
+    e.stopPropagation()
+    if (!this.sessionToken) return
+    try {
+      await patchSession(this.config.backend_url, this.sessionToken, s.id, { archived: false })
+      await this._loadSessions()
+      await this._loadArchivedSessions()
+    } catch {}
+  }
+
+  private async _loadArchivedSessions(): Promise<void> {
+    if (!this.sessionToken) return
+    try {
+      this.archivedSessions = await listSessionsArchived(this.config.backend_url, this.sessionToken)
+    } catch {}
+  }
+
+  private async _toggleArchivedView(): Promise<void> {
+    this.showArchivedSessions = !this.showArchivedSessions
+    if (this.showArchivedSessions) await this._loadArchivedSessions()
+  }
+
   private _submitEdit(): void {
     const text = this.editDraft.trim()
+    const editId = this.editingBubbleId
     this.editingBubbleId = null
     this.editDraft = ''
-    if (text) void this._send(text)
+    if (!text || !editId) return
+
+    // Check if the edited bubble is the last user message in the conversation.
+    // If not → fork. If yes (or no prior context) → plain send.
+    const userBubbles = this.bubbles.filter((b) => b.role === 'user')
+    const editedBubble = this.bubbles.find((b) => b.id === editId)
+    const isLastUserMsg = userBubbles.length > 0 && userBubbles[userBubbles.length - 1].id === editId
+
+    if (!isLastUserMsg && editedBubble?.turnId && this.activeSessionId && this.sessionToken) {
+      void this._forkAndOpen(editedBubble.turnId, text)
+    } else {
+      void this._send(text)
+    }
+  }
+
+  private async _forkAndOpen(fromTurnId: string, newMessage: string): Promise<void> {
+    if (!this.activeSessionId || !this.sessionToken) return
+    try {
+      const result = await forkSession(
+        this.config.backend_url,
+        this.sessionToken,
+        this.activeSessionId,
+        fromTurnId,
+        newMessage,
+      )
+      // Refresh session list to include the new forked session
+      await this._loadSessions()
+      // Open the new forked session
+      await this._openSession(result.session_id)
+      // Connect to the already-running turn stream
+      this._openStream(result.turn_id)
+      this.streamingTurnId = result.turn_id
+      this._showToast('Conversation forked')
+
+    } catch (e) {
+      this.errorMessage = e instanceof Error ? e.message : 'Fork failed'
+    }
   }
 
   private _openStream(turnId: string): void {
@@ -1635,11 +1727,12 @@ export class BonnieCard extends LitElement {
     `
   }
 
-  private _renderSessionItem(s: Session): TemplateResult {
+  private _renderSessionItem(s: Session, isArchived = false): TemplateResult {
     const isRenaming = this.renamingId === s.id
+    const isPinned = s.pinned === 1
     return html`
       <div
-        class=${classMap({ 'session-item': true, active: s.id === this.activeSessionId })}
+        class=${classMap({ 'session-item': true, active: s.id === this.activeSessionId, pinned: isPinned })}
         @click=${() => this._openSession(s.id)}
       >
         <div class="session-item-content">
@@ -1655,24 +1748,48 @@ export class BonnieCard extends LitElement {
               />
             `
             : html`
+              ${isPinned ? html`<span class="pin-indicator" title="Pinned">📌</span>` : nothing}
               <span class="session-item-title">${s.title || 'Untitled'}</span>
               <span class="session-item-time">${relativeTime(s.updated_at)}</span>
             `}
         </div>
         ${!isRenaming ? html`
           <div class="session-actions">
-            <button
-              class="session-action-btn"
-              aria-label="Rename conversation"
-              title="Rename"
-              @click=${(e: Event) => this._startRename(s.id, s.title, e)}
-            >${svgPencil()}</button>
-            <button
-              class="session-action-btn delete"
-              aria-label="Delete conversation"
-              title="Delete"
-              @click=${(e: Event) => { e.stopPropagation(); this.confirmDeleteId = s.id }}
-            >${svgTrash()}</button>
+            ${isArchived
+              ? html`
+                <button
+                  class="session-action-btn"
+                  aria-label="Unarchive conversation"
+                  title="Unarchive"
+                  @click=${(e: Event) => this._unarchiveSession(s, e)}
+                >${svgUnarchive()}</button>
+              `
+              : html`
+                <button
+                  class=${classMap({ 'session-action-btn': true, 'pinned-btn': isPinned })}
+                  aria-label=${isPinned ? 'Unpin conversation' : 'Pin conversation'}
+                  title=${isPinned ? 'Unpin' : 'Pin'}
+                  @click=${(e: Event) => this._togglePin(s, e)}
+                >${svgPin()}</button>
+                <button
+                  class="session-action-btn"
+                  aria-label="Rename conversation"
+                  title="Rename"
+                  @click=${(e: Event) => this._startRename(s.id, s.title, e)}
+                >${svgPencil()}</button>
+                <button
+                  class="session-action-btn"
+                  aria-label="Archive conversation"
+                  title="Archive"
+                  @click=${(e: Event) => this._archiveSession(s, e)}
+                >${svgArchive()}</button>
+                <button
+                  class="session-action-btn delete"
+                  aria-label="Delete conversation"
+                  title="Delete"
+                  @click=${(e: Event) => { e.stopPropagation(); this.confirmDeleteId = s.id }}
+                >${svgTrash()}</button>
+              `}
           </div>
         ` : nothing}
       </div>
@@ -1681,7 +1798,10 @@ export class BonnieCard extends LitElement {
 
   private _renderSidebarContent(): TemplateResult {
     const items = this.filteredSessions
-    const groups = groupByDate(items)
+    // Separate pinned from unpinned for display
+    const pinnedItems = items.filter((s) => s.pinned === 1)
+    const unpinnedItems = items.filter((s) => s.pinned !== 1)
+    const groups = groupByDate(unpinnedItems)
     return html`
       <div class="sidebar-top">
         <button class="new-chat-btn" @click=${this._newSession}>
@@ -1705,12 +1825,32 @@ export class BonnieCard extends LitElement {
           </div>`
         : html`
           <div class="session-list">
+            ${pinnedItems.length > 0 ? html`
+              <div class="sidebar-section-label pinned-label">Pinned</div>
+              ${pinnedItems.map((s) => this._renderSessionItem(s))}
+            ` : nothing}
             ${groups.map((g) => html`
               <div class="sidebar-section-label">${g.label}</div>
               ${g.sessions.map((s) => this._renderSessionItem(s))}
             `)}
           </div>
         `}
+      <!-- Archived toggle -->
+      <div class="archived-toggle-wrap">
+        <button class="archived-toggle-btn" @click=${() => this._toggleArchivedView()}>
+          ${this.showArchivedSessions ? '▾' : '▸'} Archived
+          ${this.archivedSessions.length > 0 ? html`<span class="archived-count">${this.archivedSessions.length}</span>` : nothing}
+        </button>
+      </div>
+      ${this.showArchivedSessions && this.archivedSessions.length > 0 ? html`
+        <div class="session-list archived-list">
+          <div class="sidebar-section-label">Archived</div>
+          ${this.archivedSessions.map((s) => this._renderSessionItem(s, true))}
+        </div>
+      ` : nothing}
+      ${this.showArchivedSessions && this.archivedSessions.length === 0 ? html`
+        <div class="session-empty" style="font-size:0.75rem;padding:0.5rem 1rem;">No archived conversations</div>
+      ` : nothing}
     `
   }
 
@@ -1827,6 +1967,11 @@ export class BonnieCard extends LitElement {
                 </div>
               </div>
             </div>
+          ` : nothing}
+
+          <!-- Toast notification (fork/top-level) -->
+          ${this._toastMessage ? html`
+            <div class="toast-notification">${this._toastMessage}</div>
           ` : nothing}
 
           <!-- Header -->
@@ -2255,6 +2400,18 @@ function svgTrash(): TemplateResult {
 
 function svgPencil(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`
+}
+
+function svgPin(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`
+}
+
+function svgArchive(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`
+}
+
+function svgUnarchive(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><polyline points="10 14 12 12 14 14"/><line x1="12" y1="12" x2="12" y2="18"/></svg>`
 }
 
 function svgSearch(): TemplateResult {

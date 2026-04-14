@@ -21,6 +21,8 @@ export interface Session {
   title: string
   claude_session_id: string | null
   system_prompt?: string | null
+  pinned?: number
+  archived?: number
   created_at: string
   updated_at: string
 }
