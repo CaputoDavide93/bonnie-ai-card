@@ -175,3 +175,18 @@ export interface UploadedAttachment {
   /** URL.createObjectURL of the original File — for preview thumbnail */
   localPreviewUrl: string
 }
+
+// ── Plugin ─────────────────────────────────────────────────────────────────
+
+export interface Plugin {
+  id: string
+  name: string
+  description: string
+  endpoint: string
+  method: string
+  auth_header: string
+  example_payload: string
+  enabled: boolean
+  created_at: number
+  updated_at: number
+}

@@ -16,8 +16,8 @@ import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
-import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult } from './types.js'
-import type { AuditStats, AuditDailyEntry, Memory } from './api.js'
+import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult, Plugin } from './types.js'
+import type { AuditStats, AuditDailyEntry, Memory, PluginCreate } from './api.js'
 import {
   ApiError,
   kioskExchange,
@@ -44,6 +44,10 @@ import {
   fetchAuditDaily,
   listMemories,
   deleteMemory,
+  listPlugins,
+  createPlugin,
+  updatePlugin,
+  deletePlugin,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -224,6 +228,15 @@ export class BonnieCard extends LitElement {
   @state() private showMemories = false
   @state() private memories: Memory[] = []
   @state() private memoriesLoading = false
+
+  // Feature 12: Plugin admin panel (admin only)
+  @state() private showPlugins = false
+  @state() private plugins: Plugin[] = []
+  @state() private pluginsLoading = false
+  @state() private pluginAddMode = false
+  @state() private pluginForm: PluginCreate = { name: '', description: '', endpoint: '', method: 'POST', auth_header: '', example_payload: '', enabled: true }
+  @state() private pluginFormError = ''
+  @state() private pluginFormSaving = false
 
   private _fileInput: HTMLInputElement | null = null
 
@@ -417,6 +430,69 @@ export class BonnieCard extends LitElement {
       this.memories = this.memories.filter((m) => m.id !== memId)
     } catch {
       // best-effort; ignore
+    }
+  }
+
+  // ── Feature 12: Plugin admin panel ───────────────────────────────────────
+
+  private async _openPlugins(): Promise<void> {
+    this.showPlugins = true
+    this.pluginsLoading = true
+    this.pluginAddMode = false
+    this.pluginFormError = ''
+    try {
+      this.plugins = await listPlugins(this.config.backend_url, this.sessionToken!)
+    } catch {
+      this.plugins = []
+    } finally {
+      this.pluginsLoading = false
+    }
+  }
+
+  private _closePlugins(): void {
+    this.showPlugins = false
+    this.pluginAddMode = false
+    this.pluginFormError = ''
+  }
+
+  private async _togglePluginEnabled(plugin: Plugin): Promise<void> {
+    if (!this.sessionToken) return
+    try {
+      const updated = await updatePlugin(this.config.backend_url, this.sessionToken, plugin.id, { enabled: !plugin.enabled })
+      this.plugins = this.plugins.map((p) => p.id === plugin.id ? updated : p)
+    } catch {
+      // best-effort
+    }
+  }
+
+  private async _deletePlugin(pluginId: string): Promise<void> {
+    if (!this.sessionToken) return
+    try {
+      await deletePlugin(this.config.backend_url, this.sessionToken, pluginId)
+      this.plugins = this.plugins.filter((p) => p.id !== pluginId)
+    } catch {
+      // best-effort
+    }
+  }
+
+  private async _saveNewPlugin(): Promise<void> {
+    if (!this.sessionToken) return
+    this.pluginFormError = ''
+    const { name, description, endpoint } = this.pluginForm
+    if (!name.trim() || !description.trim() || !endpoint.trim()) {
+      this.pluginFormError = 'Name, description and endpoint are required.'
+      return
+    }
+    this.pluginFormSaving = true
+    try {
+      const created = await createPlugin(this.config.backend_url, this.sessionToken, this.pluginForm)
+      this.plugins = [...this.plugins, created]
+      this.pluginAddMode = false
+      this.pluginForm = { name: '', description: '', endpoint: '', method: 'POST', auth_header: '', example_payload: '', enabled: true }
+    } catch (err) {
+      this.pluginFormError = err instanceof Error ? err.message : 'Failed to save plugin.'
+    } finally {
+      this.pluginFormSaving = false
     }
   }
 
@@ -2323,6 +2399,122 @@ export class BonnieCard extends LitElement {
             </div>
           ` : nothing}
 
+          <!-- Feature 12: Plugins admin overlay -->
+          ${this.showPlugins ? html`
+            <div class="analytics-overlay" @click=${() => this._closePlugins()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgPuzzle()} Plugins</span>
+                  <button class="icon-btn" @click=${() => this._closePlugins()}>${svgClose()}</button>
+                </div>
+                ${this.pluginsLoading ? html`
+                  <div class="analytics-loading"><div class="loading-spinner"></div></div>
+                ` : html`
+                  <!-- Plugin list -->
+                  ${this.plugins.length === 0 && !this.pluginAddMode ? html`
+                    <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--muted)">
+                      No plugins registered yet.
+                    </div>
+                  ` : html`
+                    <div class="memories-list">
+                      ${this.plugins.map((p) => html`
+                        <div class="memory-item" style="flex-direction:column;align-items:flex-start;gap:0.25rem">
+                          <div style="display:flex;align-items:center;gap:0.5rem;width:100%">
+                            <span class="memory-key" style="flex:1">${p.name}</span>
+                            <span class="memory-badge" style="background:${p.method === 'GET' ? 'var(--accent)' : 'var(--muted)'};color:white;font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px">${p.method}</span>
+                            <!-- enabled toggle -->
+                            <button
+                              class="icon-btn"
+                              title="${p.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}"
+                              style="color:${p.enabled ? 'var(--accent)' : 'var(--muted)'}"
+                              @click=${() => void this._togglePluginEnabled(p)}
+                            >${p.enabled ? svgCheck() : svgClose()}</button>
+                            <!-- delete button -->
+                            <button
+                              class="icon-btn memory-delete-btn"
+                              aria-label="Delete plugin"
+                              title="Delete plugin"
+                              @click=${() => void this._deletePlugin(p.id)}
+                            >${svgTrash()}</button>
+                          </div>
+                          <span class="memory-value" style="font-size:0.78rem;color:var(--muted)">${p.description}</span>
+                          <span style="font-size:0.7rem;color:var(--muted);word-break:break-all">${p.endpoint}</span>
+                        </div>
+                      `)}
+                    </div>
+                  `}
+
+                  <!-- Add plugin form -->
+                  ${this.pluginAddMode ? html`
+                    <div style="padding:0.75rem 0;border-top:1px solid var(--border);margin-top:0.5rem">
+                      <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem">New plugin</div>
+                      <div style="display:flex;flex-direction:column;gap:0.4rem">
+                        <input
+                          class="sys-prompt-input"
+                          placeholder="Name (e.g. my_tool)"
+                          .value=${this.pluginForm.name}
+                          @input=${(e: Event) => { this.pluginForm = { ...this.pluginForm, name: (e.target as HTMLInputElement).value } }}
+                        />
+                        <input
+                          class="sys-prompt-input"
+                          placeholder="Description"
+                          .value=${this.pluginForm.description}
+                          @input=${(e: Event) => { this.pluginForm = { ...this.pluginForm, description: (e.target as HTMLInputElement).value } }}
+                        />
+                        <input
+                          class="sys-prompt-input"
+                          placeholder="Endpoint URL"
+                          .value=${this.pluginForm.endpoint}
+                          @input=${(e: Event) => { this.pluginForm = { ...this.pluginForm, endpoint: (e.target as HTMLInputElement).value } }}
+                        />
+                        <div style="display:flex;gap:0.4rem;align-items:center">
+                          <select
+                            class="model-selector"
+                            style="flex:0 0 auto"
+                            .value=${this.pluginForm.method ?? 'POST'}
+                            @change=${(e: Event) => { this.pluginForm = { ...this.pluginForm, method: (e.target as HTMLSelectElement).value } }}
+                          >
+                            ${['GET','POST','PUT','PATCH','DELETE'].map((m) => html`<option value=${m} ?selected=${m === (this.pluginForm.method ?? 'POST')}>${m}</option>`)}
+                          </select>
+                          <input
+                            class="sys-prompt-input"
+                            placeholder="Auth header (optional)"
+                            style="flex:1"
+                            .value=${this.pluginForm.auth_header ?? ''}
+                            @input=${(e: Event) => { this.pluginForm = { ...this.pluginForm, auth_header: (e.target as HTMLInputElement).value } }}
+                          />
+                        </div>
+                        <input
+                          class="sys-prompt-input"
+                          placeholder='Example payload (optional, e.g. {"text":"hello"})'
+                          .value=${this.pluginForm.example_payload ?? ''}
+                          @input=${(e: Event) => { this.pluginForm = { ...this.pluginForm, example_payload: (e.target as HTMLInputElement).value } }}
+                        />
+                        ${this.pluginFormError ? html`
+                          <div style="color:var(--danger,#e55);font-size:0.78rem">${this.pluginFormError}</div>
+                        ` : nothing}
+                        <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.25rem">
+                          <button class="confirm-btn cancel" @click=${() => { this.pluginAddMode = false; this.pluginFormError = '' }}>Cancel</button>
+                          <button class="confirm-btn" ?disabled=${this.pluginFormSaving} @click=${() => void this._saveNewPlugin()}>
+                            ${this.pluginFormSaving ? 'Saving…' : 'Save plugin'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ` : html`
+                    <div style="padding-top:0.75rem;border-top:1px solid var(--border);margin-top:0.5rem">
+                      <button
+                        class="icon-btn"
+                        style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;padding:0.3rem 0.5rem"
+                        @click=${() => { this.pluginAddMode = true; this.pluginFormError = '' }}
+                      >${svgPlus()} Add plugin</button>
+                    </div>
+                  `}
+                `}
+              </div>
+            </div>
+          ` : nothing}
+
           <!-- Header -->
           <div class="header">
             ${!this.isWide
@@ -2465,6 +2657,15 @@ export class BonnieCard extends LitElement {
                 title="Usage analytics (admin)"
                 @click=${() => this.showAnalytics ? this._closeAnalytics() : void this._openAnalytics()}
               >${svgBarChart()}</button>
+            ` : nothing}
+            <!-- Feature 12: Plugins button (admin only) -->
+            ${this.isAdmin ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showPlugins })}
+                aria-label="Plugins"
+                title="Plugin registry (admin)"
+                @click=${() => this.showPlugins ? this._closePlugins() : void this._openPlugins()}
+              >${svgPuzzle()}</button>
             ` : nothing}
             ${this.isWide
               ? html`<button class="icon-btn" aria-label=${t('newConversation')} @click=${this._newSession} title="${t('newConversation')} (Cmd+N)">
@@ -2899,6 +3100,11 @@ function svgSystemPrompt(): TemplateResult {
 /** Brain/memory icon (Feature 6) */
 function svgMemory(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.44-3.14Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.44-3.14Z"/></svg>`
+}
+
+/** Puzzle / plugin icon (Feature 12) */
+function svgPuzzle(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4c-1.1 0-2 .9-2 2v4h1.5a2.5 2.5 0 0 1 0 5H2v4c0 1.1.9 2 2 2h4v-1.5a2.5 2.5 0 0 1 5 0V21h4c1.1 0 2-.9 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg>`
 }
 
 /** Return a simple SVG icon for a template id/name string. */

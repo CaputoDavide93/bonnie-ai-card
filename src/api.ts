@@ -1,5 +1,5 @@
-import type { AuthResponse, ConversationTemplate, Session, SessionDetail, UploadResponse } from './types.js'
-export type { Session }
+import type { AuthResponse, ConversationTemplate, Session, SessionDetail, UploadResponse, Plugin } from './types.js'
+export type { Session, Plugin }
 
 export class ApiError extends Error {
   constructor(
@@ -341,6 +341,55 @@ export async function searchMemories(baseUrl: string, token: string, q: string):
   const url = new URL(`${baseUrl}/api/memories/search`)
   url.searchParams.set('q', q)
   return request<Memory[]>(url.toString(), { token })
+}
+
+// ── Plugins (Feature 12) ──────────────────────────────────────────────────────
+
+export async function listPlugins(baseUrl: string, token: string): Promise<Plugin[]> {
+  return request<Plugin[]>(`${baseUrl}/api/plugins`, { token })
+}
+
+export interface PluginCreate {
+  name: string
+  description: string
+  endpoint: string
+  method?: string
+  auth_header?: string
+  example_payload?: string
+  enabled?: boolean
+}
+
+export async function createPlugin(baseUrl: string, token: string, data: PluginCreate): Promise<Plugin> {
+  return request<Plugin>(`${baseUrl}/api/plugins`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+export interface PluginUpdate {
+  name?: string
+  description?: string
+  endpoint?: string
+  method?: string
+  auth_header?: string
+  example_payload?: string
+  enabled?: boolean
+}
+
+export async function updatePlugin(baseUrl: string, token: string, pluginId: string, data: PluginUpdate): Promise<Plugin> {
+  return request<Plugin>(`${baseUrl}/api/plugins/${pluginId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deletePlugin(baseUrl: string, token: string, pluginId: string): Promise<void> {
+  return request<void>(`${baseUrl}/api/plugins/${pluginId}`, {
+    method: 'DELETE',
+    token,
+  })
 }
 
 /** Respond to a permission request */
