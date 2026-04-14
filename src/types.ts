@@ -146,6 +146,16 @@ export interface RenameSessionPayload {
   title: string
 }
 
+// ── Conversation template ─────────────────────────────────────────────────────
+
+export interface ConversationTemplate {
+  id: string
+  name: string
+  name_it: string
+  icon: string
+  prompt: string
+}
+
 // ── Upload attachment ─────────────────────────────────────────────────────────
 
 export interface UploadResponse {

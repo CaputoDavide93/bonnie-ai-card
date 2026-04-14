@@ -16,7 +16,7 @@ import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
-import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult } from './types.js'
+import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult } from './types.js'
 import {
   ApiError,
   kioskExchange,
@@ -38,10 +38,11 @@ import {
   deleteUpload,
   forkSession,
   patchSession,
+  fetchTemplates,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
-import { t, initLocale, suggestedPrompts } from './i18n.js'
+import { t, initLocale, suggestedPrompts, getLocale } from './i18n.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -201,6 +202,9 @@ export class BonnieCard extends LitElement {
   @state() private sessionTotalCostUsd = 0
   @state() private sessionTurnCount = 0
 
+  // Conversation templates (Feature 11)
+  @state() private templates: ConversationTemplate[] = []
+
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
@@ -317,7 +321,11 @@ export class BonnieCard extends LitElement {
       const models: string[] = user?.role?.permissions?.limits?.allowed_models ?? []
       this.allowedModels = models
       this.selectedModel = this.config.model ?? models[0] ?? ''
-      await this._loadSessions()
+      const [,templates] = await Promise.all([
+        this._loadSessions(),
+        fetchTemplates(this.config.backend_url),
+      ])
+      this.templates = templates
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         this.authError = true
@@ -515,6 +523,46 @@ export class BonnieCard extends LitElement {
     }
     if (this.activeSessionId) {
       void this._send(text)
+    }
+  }
+
+  // ── Conversation templates ────────────────────────────────────────────────
+
+  private async _startWithTemplate(tpl: ConversationTemplate): Promise<void> {
+    if (!this.sessionToken) return
+    this._closeStream()
+    this._revokeAttachmentUrls(this.bubbles)
+    this.sidebarOpen = false
+    this.editingBubbleId = null
+    this.showSystemPromptPanel = false
+    this.showMessageSearch = false
+    this.messageSearchQuery = ''
+    this.messageSearchResults = []
+    this._resetSessionStats()
+    clearMarkdownCache()
+    try {
+      const session = await createSession(
+        this.config.backend_url,
+        this.sessionToken,
+        tpl.name,
+      )
+      // Set the template's system prompt on the new session
+      await patchSession(this.config.backend_url, this.sessionToken, session.id, {
+        system_prompt: tpl.prompt,
+      })
+      const updatedSession = { ...session, system_prompt: tpl.prompt }
+      this.sessions = [updatedSession, ...this.sessions]
+      this.activeSessionId = updatedSession.id
+      this.activeSessionTitle = updatedSession.title
+      this.activeSystemPrompt = tpl.prompt
+      this.systemPromptDraft = tpl.prompt
+      this.bubbles = []
+      this._userScrolled = false
+      this.showScrollToBottom = false
+      this._initVisibleRange()
+      this._focusComposer()
+    } catch (e) {
+      this._handleApiError(e)
     }
   }
 
@@ -2250,6 +2298,20 @@ export class BonnieCard extends LitElement {
                               <button class="suggested-prompt-btn" @click=${() => this._startWithPrompt(p)}>${p}</button>
                             `)}
                           </div>
+                          ${this.templates.length > 0 ? html`
+                            <div class="template-section">
+                              <div class="template-section-label">${t('templates')}</div>
+                              <div class="template-row">
+                                ${this.templates.map((tpl) => html`
+                                  <div class="template-card">
+                                    <div class="template-card-icon">${svgTemplateIcon(tpl.icon)}</div>
+                                    <div class="template-card-name">${getLocale() === 'it' ? tpl.name_it : tpl.name}</div>
+                                    <button class="template-start-btn" @click=${() => void this._startWithTemplate(tpl)}>${t('startTemplate')}</button>
+                                  </div>
+                                `)}
+                              </div>
+                            </div>
+                          ` : nothing}
                         </div>
                       </div>
                     `
@@ -2598,6 +2660,28 @@ function svgKey(): TemplateResult {
 
 function svgSystemPrompt(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><polyline points="9 16 12 13 15 16"/><line x1="12" y1="13" x2="12" y2="19"/></svg>`
+}
+
+/** Return a simple SVG icon for a template id/name string. */
+function svgTemplateIcon(iconName: string): TemplateResult {
+  switch (iconName) {
+    case 'chef':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" y1="17" x2="18" y2="17"/></svg>`
+    case 'moon':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+    case 'code':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
+    case 'heart':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`
+    case 'book':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`
+    case 'cart':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>`
+    case 'terminal':
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`
+    default: // 'chat' and fallback
+      return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
+  }
 }
 
 // ── Register custom element ────────────────────────────────────────────────

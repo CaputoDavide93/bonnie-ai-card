@@ -1,4 +1,4 @@
-import type { AuthResponse, Session, SessionDetail, UploadResponse } from './types.js'
+import type { AuthResponse, ConversationTemplate, Session, SessionDetail, UploadResponse } from './types.js'
 export type { Session }
 
 export class ApiError extends Error {
@@ -279,6 +279,15 @@ export async function searchSession(
   const url = new URL(`${baseUrl}/api/sessions/${sessionId}/search`)
   url.searchParams.set('q', query)
   return request<{ turn_id: string; snippet: string; role: string }[]>(url.toString(), { token })
+}
+
+/** Fetch conversation templates (public, no auth required) */
+export async function fetchTemplates(baseUrl: string): Promise<ConversationTemplate[]> {
+  try {
+    return await request<ConversationTemplate[]>(`${baseUrl}/api/templates`)
+  } catch {
+    return []
+  }
 }
 
 /** Respond to a permission request */

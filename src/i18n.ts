@@ -47,6 +47,8 @@ const strings = {
       'Turn off the living room lights',
       "Summarise today's calendar",
     ],
+    templates: 'Templates',
+    startTemplate: 'Start',
   },
   it: {
     askAnything: 'Chiedi qualsiasi cosa a Bonnie',
@@ -88,10 +90,12 @@ const strings = {
     noConversations: 'Nessuna conversazione. Iniziane una!',
     startConversation: 'Inizia una conversazione',
     suggestedPrompts: [
-      'Cosa stanno suonando le casse?',
-      'Spegni le luci del salotto',
-      "Riassumi il calendario di oggi",
+      "Che temperatura c'è in casa?",
+      'Accendi le luci del salotto',
+      "Cosa c'è in calendario oggi?",
     ],
+    templates: 'Modelli',
+    startTemplate: 'Inizia',
   },
 } as const
 
@@ -129,6 +133,11 @@ export function initLocale(
     }
   }
   _locale = 'en'
+}
+
+/** Return the currently active locale. */
+export function getLocale(): Locale {
+  return _locale
 }
 
 /** Translate a key using the current locale. Falls back to English. */
