@@ -93,11 +93,22 @@ renderer.table = function(header: string, body: string): string {
   return `<div class="md-table-wrap"><table class="md-table"><thead>${header}</thead><tbody>${body}</tbody></table></div>`
 }
 
-// Image renderer: max-width 100%, rounded corners, lazy loading
+// Attribute escaper for safe HTML construction
+function escAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+// Only allow safe URL schemes to prevent javascript: XSS
+function isSafeUrl(u: string): boolean {
+  return /^(https?:|blob:|data:image\/|\/|\.\.?\/)/.test(u.trim())
+}
+
+// Image renderer: sanitized href/title/alt, max-width, lazy loading
 renderer.image = function(href: string, title: string | null, text: string): string {
-  const titleAttr = title ? ` title="${title}"` : ''
-  const altAttr = text ? ` alt="${text}"` : ''
-  return `<img src="${href}"${altAttr}${titleAttr} class="md-image" loading="lazy">`
+  if (!isSafeUrl(href)) return escAttr(text || href)
+  const safeHref = escAttr(href)
+  const titleAttr = title ? ` title="${escAttr(title)}"` : ''
+  const altAttr = text ? ` alt="${escAttr(text)}"` : ''
+  return `<img src="${safeHref}"${altAttr}${titleAttr} class="md-image" loading="lazy">`
 }
 
 marked.use({ renderer })
