@@ -648,9 +648,19 @@ export class BonnieCard extends LitElement {
       const target = e.target as EventSource
       if (target.readyState === EventSource.CONNECTING) {
         // Browser is attempting reconnect — server closed naturally without
-        // sending an explicit `done` event. Close the ES to stop retries and
-        // treat the stream as finished (not an error).
+        // sending an explicit `done` event. Close the ES to stop retries.
+        // If there's an active streaming bubble, mark it done (not error)
+        // but flag that the response may be incomplete.
         target.close()
+        const hasStreamingBubble = this.bubbles.some((b) => b.streaming)
+        if (hasStreamingBubble) {
+          this.bubbles = this.bubbles.map((b) =>
+            b.streaming
+              ? { ...b, streaming: false, text: (b.text ?? '') + ' *(response may be incomplete)*' }
+              : b,
+          )
+          this._showToast('Connection closed')
+        }
         this._finishStream()
         return
       }
