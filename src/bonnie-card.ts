@@ -61,6 +61,29 @@ function relativeTime(dateStr: string): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+// ── Feature 11 (sidebar): Date grouping helper ─────────────────────────────
+
+function groupByDate(sessions: Session[]): { label: string; sessions: Session[] }[] {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1)
+  const week = new Date(today); week.setDate(week.getDate() - 7)
+
+  const groups: { label: string; sessions: Session[] }[] = [
+    { label: 'Today', sessions: [] },
+    { label: 'Yesterday', sessions: [] },
+    { label: 'Previous 7 days', sessions: [] },
+    { label: 'Older', sessions: [] },
+  ]
+  for (const s of sessions) {
+    const d = new Date(s.updated_at)
+    if (d >= today) groups[0].sessions.push(s)
+    else if (d >= yesterday) groups[1].sessions.push(s)
+    else if (d >= week) groups[2].sessions.push(s)
+    else groups[3].sessions.push(s)
+  }
+  return groups.filter((g) => g.sessions.length > 0)
+}
+
 const LS_SIDEBAR_KEY = 'bonnie-ai-card:sidebar-open'
 
 // ── Custom element ─────────────────────────────────────────────────────────
@@ -134,6 +157,13 @@ export class BonnieCard extends LitElement {
   @state() private uploadingCount = 0
   @state() private lightboxImage: string | null = null
 
+  // Feature 12: Paste image — handler attached in firstUpdated
+  private _onPaste: ((e: ClipboardEvent) => void) | null = null
+
+  // Feature 10 (this sprint): Model selector
+  @state() private allowedModels: string[] = []
+  @state() private selectedModel = ''
+
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
@@ -196,6 +226,7 @@ export class BonnieCard extends LitElement {
     this._setupResizeObserver()
     this._setupScrollListener()
     this._setupCodeCopyListeners()
+    this._setupPasteListener()
   }
 
   override updated(changed: Map<string, unknown>): void {
@@ -230,6 +261,11 @@ export class BonnieCard extends LitElement {
     try {
       const auth = await kioskExchange(this.config.backend_url, this.config.kiosk_token)
       this.sessionToken = auth.session_token
+      // Extract allowed models from the user's role permissions
+      const user = auth.user as any
+      const models: string[] = user?.role?.permissions?.limits?.allowed_models ?? []
+      this.allowedModels = models
+      this.selectedModel = this.config.model ?? models[0] ?? ''
       await this._loadSessions()
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -504,7 +540,7 @@ export class BonnieCard extends LitElement {
         this.sessionToken,
         this.activeSessionId,
         messageWithAttachments,
-        this.config.model,
+        this.selectedModel || this.config.model,
       )
       this.streamingTurnId = turn_id
       this._turnStartTime = Date.now()
@@ -814,6 +850,32 @@ export class BonnieCard extends LitElement {
     this._downloadBlob(lines.join('\n'), `bonnie-${date}-${title.slice(0, 20).replace(/\s+/g, '-')}.md`, 'text/markdown')
   }
 
+  // Feature 14: Copy full conversation to clipboard
+  private async _copyAllConversation(): Promise<void> {
+    if (!this.activeSessionId) return
+    this.showExportMenu = false
+    const title = this.activeSessionTitle || 'Conversation'
+    const date = new Date().toISOString().split('T')[0]
+    const lines: string[] = [`# ${title}`, `_Exported: ${date}_`, '']
+    for (const b of this.bubbles) {
+      if (b.role === 'user') {
+        lines.push('### User', b.text ?? '', '')
+      } else if (b.role === 'assistant') {
+        lines.push('### Bonnie', b.text ?? '', '')
+      } else if (b.role === 'tool') {
+        lines.push(`### Tool: ${b.toolName ?? 'unknown'}`)
+        if (b.toolInput !== undefined) lines.push('**Input:**', '```json', JSON.stringify(b.toolInput, null, 2), '```', '')
+        if (b.toolResult !== undefined) lines.push('**Result:**', '```', String(b.toolResult).slice(0, 2000), '```', '')
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      this._showToast('Conversation copied')
+    } catch {
+      this._showToast('Copy failed')
+    }
+  }
+
   private _exportJson(): void {
     if (!this.activeSessionId) return
     this.showExportMenu = false
@@ -873,8 +935,8 @@ export class BonnieCard extends LitElement {
     input.click()
   }
 
-  private async _onFilesSelected(input: HTMLInputElement): Promise<void> {
-    const files = Array.from(input.files ?? [])
+  private async _onFilesSelected(source: HTMLInputElement | File[]): Promise<void> {
+    const files = Array.isArray(source) ? source : Array.from(source.files ?? [])
     if (!files.length) return
 
     const remaining = 3 - this.pendingAttachments.length
@@ -884,6 +946,26 @@ export class BonnieCard extends LitElement {
     const toUpload = files.slice(0, remaining)
 
     await Promise.all(toUpload.map((file) => this._uploadFile(file)))
+  }
+
+  // ── Feature 12: Paste image handler ───────────────────────────────────────
+
+  private _setupPasteListener(): void {
+    this._onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      const images = Array.from(items).filter((i) => i.type.startsWith('image/'))
+      if (images.length === 0) return
+      e.preventDefault()
+      const files = images.map((i) => i.getAsFile()).filter(Boolean) as File[]
+      void this._onFilesSelected(files)
+    }
+    this.updateComplete.then(() => {
+      const ta = this.shadowRoot?.querySelector<HTMLTextAreaElement>('.composer-textarea')
+      if (ta && this._onPaste) {
+        ta.addEventListener('paste', this._onPaste as EventListener)
+      }
+    })
   }
 
   private async _uploadFile(file: File): Promise<void> {
@@ -1101,6 +1183,22 @@ export class BonnieCard extends LitElement {
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
+  // ── Feature 15: Session navigation shortcuts ─────────────────────────────
+
+  private _navigateSession(direction: 'prev' | 'next'): void {
+    const sessions = this.filteredSessions
+    if (sessions.length === 0) return
+    const idx = sessions.findIndex((s) => s.id === this.activeSessionId)
+    let next: number
+    if (idx === -1) {
+      next = direction === 'prev' ? sessions.length - 1 : 0
+    } else {
+      next = direction === 'prev' ? idx - 1 : idx + 1
+    }
+    if (next < 0 || next >= sessions.length) return
+    void this._openSession(sessions[next].id)
+  }
+
   private _onGlobalKeydown = (e: KeyboardEvent): void => {
     const isMod = e.metaKey || e.ctrlKey
     if (isMod && e.key === 'n') {
@@ -1114,6 +1212,12 @@ export class BonnieCard extends LitElement {
       if (!this.isWide) {
         this.sidebarOpen = !this.sidebarOpen
       }
+    } else if (isMod && e.key === '[') {
+      e.preventDefault()
+      this._navigateSession('prev')
+    } else if (isMod && e.key === ']') {
+      e.preventDefault()
+      this._navigateSession('next')
     } else if (e.key === 'Escape' && this.lightboxImage) {
       this.lightboxImage = null
     } else if (e.key === 'Escape' && this.showKbHelp) {
@@ -1246,6 +1350,26 @@ export class BonnieCard extends LitElement {
     `
   }
 
+  // ── Feature 9: Typing indicator ────────────────────────────────────────────
+
+  private _renderTypingIndicator(): TemplateResult | typeof nothing {
+    // Show only when streaming has started but no assistant text has arrived yet
+    if (!this.streamingTurnId) return nothing
+    const hasAssistantText = this.bubbles.some((b) => b.streaming && b.text)
+    if (hasAssistantText) return nothing
+    return html`
+      <div class="bubble-row assistant">
+        <div class="bubble assistant typing-indicator-bubble">
+          <div class="typing-indicator">
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+          </div>
+        </div>
+      </div>
+    `
+  }
+
   /** Render the permission card once (outside the bubble loop). */
   private _renderPermissionCard(): TemplateResult | typeof nothing {
     if (!this.activePermissionRequest) return nothing
@@ -1372,6 +1496,7 @@ export class BonnieCard extends LitElement {
 
   private _renderSidebarContent(): TemplateResult {
     const items = this.filteredSessions
+    const groups = groupByDate(items)
     return html`
       <div class="sidebar-top">
         <button class="new-chat-btn" @click=${this._newSession}>
@@ -1395,7 +1520,10 @@ export class BonnieCard extends LitElement {
           </div>`
         : html`
           <div class="session-list">
-            ${items.map((s) => this._renderSessionItem(s))}
+            ${groups.map((g) => html`
+              <div class="sidebar-section-label">${g.label}</div>
+              ${g.sessions.map((s) => this._renderSessionItem(s))}
+            `)}
           </div>
         `}
     `
@@ -1495,16 +1623,32 @@ export class BonnieCard extends LitElement {
               title="Theme: ${this.themeMode}"
               @click=${() => this._cycleTheme()}
             >${this.themeMode === 'light' ? svgSun() : this.themeMode === 'dark' ? svgMoon() : svgSunMoon()}</button>
-            <!-- Feature 6: Export menu -->
+            <!-- Feature 10 (this sprint): Model selector -->
+            ${this.allowedModels.length > 1 ? html`
+              <select
+                class="model-selector"
+                .value=${this.selectedModel}
+                @change=${(e: Event) => { this.selectedModel = (e.target as HTMLSelectElement).value }}
+                title="Select model"
+              >
+                ${this.allowedModels.map((m) => html`
+                  <option value=${m} ?selected=${m === this.selectedModel}>${m.replace('claude-', '').replace(/-\d+$/, (v) => v)}</option>
+                `)}
+              </select>
+            ` : nothing}
+            <!-- Feature 6 + 14: Export / Copy menu -->
             ${this.activeSessionId ? html`
               <div class="export-menu-wrap" style="position:relative">
                 <button
                   class="icon-btn"
-                  title="Export conversation"
+                  title="More options"
                   @click=${() => { this.showExportMenu = !this.showExportMenu }}
                 >${svgDots()}</button>
                 ${this.showExportMenu ? html`
                   <div class="export-menu" @click=${(e: Event) => e.stopPropagation()}>
+                    <button class="export-menu-item" @click=${() => this._copyAllConversation()}>
+                      ${svgCopy()} Copy all as Markdown
+                    </button>
                     <button class="export-menu-item" @click=${() => this._exportMarkdown()}>
                       ${svgDownload()} Export as Markdown
                     </button>
@@ -1549,6 +1693,14 @@ export class BonnieCard extends LitElement {
                 <div class="kb-help-row">
                   <span class="kb-help-label">Re-ask last message</span>
                   <span class="kb-shortcuts"><span class="kb-key">↑</span></span>
+                </div>
+                <div class="kb-help-row">
+                  <span class="kb-help-label">Previous session</span>
+                  <span class="kb-shortcuts"><span class="kb-key">⌘</span><span class="kb-key">[</span></span>
+                </div>
+                <div class="kb-help-row">
+                  <span class="kb-help-label">Next session</span>
+                  <span class="kb-shortcuts"><span class="kb-key">⌘</span><span class="kb-key">]</span></span>
                 </div>
               </div>
             </div>
@@ -1623,7 +1775,11 @@ export class BonnieCard extends LitElement {
                                   `)}
                                 </div>
                               </div>`
-                            : html`${this.bubbles.map((b) => this._renderBubble(b))}${this._renderPermissionCard()}`}
+                            : html`
+                                ${this.bubbles.map((b) => this._renderBubble(b))}
+                                ${this._renderTypingIndicator()}
+                                ${this._renderPermissionCard()}
+                              `}
                       </div>
                     `}
 

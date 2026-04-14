@@ -2099,4 +2099,54 @@ export const cardStyles = css`
   :host([data-theme="light"]) .hljs-meta {
     color: #9DA1A6;
   }
+
+  /* ── Feature 9: Typing indicator ──────────────────────── */
+  .typing-indicator-bubble {
+    display: inline-flex;
+    padding: 0;
+  }
+
+  .typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+  }
+
+  .typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--bonnie-ink-3);
+    animation: typing-bounce 1.4s ease-in-out infinite;
+  }
+
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typing-bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-6px); }
+  }
+
+  /* ── Feature 10: Model selector pill ─────────────────── */
+  .model-selector {
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 8px;
+    color: var(--bonnie-ink-2);
+    font-size: 11px;
+    font-family: inherit;
+    padding: 4px 8px;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.12s;
+    max-width: 130px;
+    flex-shrink: 0;
+  }
+
+  .model-selector:hover,
+  .model-selector:focus {
+    border-color: var(--bonnie-accent);
+    color: var(--bonnie-ink-0);
+  }
 `
