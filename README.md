@@ -4,9 +4,8 @@ A native Home Assistant Lovelace card for chatting with a [Bonnie AI Chat](https
 
 ## Screenshots
 
-<!-- Add screenshots here once the card is deployed -->
-![Bonnie AI Card - Wide mode](docs/screenshot-wide.png)
-![Bonnie AI Card - Narrow mode](docs/screenshot-narrow.png)
+<!-- TODO: add real screenshots before publishing -->
+*Screenshots will be added before the first release.*
 
 ## Installation
 
@@ -39,7 +38,7 @@ Add the card to any Lovelace dashboard in YAML mode:
 
 ```yaml
 type: custom:bonnie-ai-card
-backend_url: http://192.168.10.100:7788
+backend_url: http://<your-bonnie-host>:7788
 kiosk_token: "your-kiosk-token-here"
 title: "Bonnie"
 height: 600

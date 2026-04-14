@@ -1,5 +1,6 @@
 {
   "name": "Bonnie AI Card",
+  "category": "plugin",
   "render_readme": true,
   "filename": "bonnie-ai-card.js"
 }

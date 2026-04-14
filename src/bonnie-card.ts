@@ -1,6 +1,6 @@
 // bonnie-ai-card — native HA Lovelace card for Bonnie AI Chat
 console.info(
-  '%c bonnie-ai-card %c v0.3.0 ',
+  '%c bonnie-ai-card %c v0.1.0 ',
   'color: white; background: #E8A04C; font-weight: 700;',
   'color: #E8A04C; background: white; font-weight: 700;',
 )
@@ -16,7 +16,7 @@ import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
-import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment } from './types.js'
+import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn } from './types.js'
 import {
   ApiError,
   kioskExchange,
@@ -174,9 +174,22 @@ export class BonnieCard extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback()
     this._closeStream()
+    this._revokeAttachmentUrls(this.bubbles)
     this._resizeObserver?.disconnect()
     document.removeEventListener('keydown', this._onGlobalKeydown)
     this._stopListening()
+  }
+
+  /** Revoke blob: URLs from attachment previews to prevent memory leaks. */
+  private _revokeAttachmentUrls(bubbles: Bubble[]): void {
+    for (const b of bubbles) {
+      if (!b.attachments) continue
+      for (const a of b.attachments) {
+        if (a.localPreviewUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(a.localPreviewUrl)
+        }
+      }
+    }
   }
 
   override firstUpdated(): void {
@@ -187,8 +200,9 @@ export class BonnieCard extends LitElement {
 
   override updated(changed: Map<string, unknown>): void {
     super.updated(changed)
-    // Re-attach code copy listeners when bubbles change
-    if (changed.has('bubbles')) {
+    // Re-attach code copy listeners when bubbles change — skip during streaming
+    // to avoid queueing microtasks on every SSE chunk
+    if (changed.has('bubbles') && !this.streamingTurnId) {
       this._setupCodeCopyListeners()
     }
     if (changed.has('sidebarOpen')) {
@@ -272,6 +286,7 @@ export class BonnieCard extends LitElement {
   private async _openSession(id: string): Promise<void> {
     if (!this.sessionToken) return
     this._closeStream()
+    this._revokeAttachmentUrls(this.bubbles)
     this.activeSessionId = id
     this.bubbles = []
     this.sidebarOpen = false
@@ -296,6 +311,7 @@ export class BonnieCard extends LitElement {
   private async _newSession(): Promise<void> {
     if (!this.sessionToken) return
     this._closeStream()
+    this._revokeAttachmentUrls(this.bubbles)
     this.sidebarOpen = false
     this.editingBubbleId = null
     try {
@@ -400,7 +416,7 @@ export class BonnieCard extends LitElement {
     }
   }
 
-  private _turnsToBubbles(turns: any[]): Bubble[] {
+  private _turnsToBubbles(turns: RawTurn[]): Bubble[] {
     const out: Bubble[] = []
     for (const turn of turns) {
       if (!Array.isArray(turn.content)) continue
@@ -627,7 +643,17 @@ export class BonnieCard extends LitElement {
       this._finishStream()
     })
 
-    es.onerror = () => {
+    es.onerror = (e: Event) => {
+      const target = e.target as EventSource
+      if (target.readyState === EventSource.CONNECTING) {
+        // Browser is attempting reconnect — server closed naturally without
+        // sending an explicit `done` event. Close the ES to stop retries and
+        // treat the stream as finished (not an error).
+        target.close()
+        this._finishStream()
+        return
+      }
+      // readyState === CLOSED (2): genuine connection failure
       this.bubbles = this.bubbles.map((b) =>
         b.streaming
           ? { ...b, streaming: false, error: true, text: (b.text || '') + '\n\n[Connection error]' }
@@ -647,7 +673,8 @@ export class BonnieCard extends LitElement {
   // Feature 3: Auto-title from first user message
   private async _maybeAutoTitle(): Promise<void> {
     if (!this.sessionToken || !this.activeSessionId) return
-    const session = this.sessions.find((s) => s.id === this.activeSessionId)
+    const capturedSessionId = this.activeSessionId
+    const session = this.sessions.find((s) => s.id === capturedSessionId)
     if (!session) return
     const isAutoTitle = !session.title || session.title === '' ||
       BonnieCard.AUTO_TITLE_RE.test(session.title)
@@ -657,7 +684,7 @@ export class BonnieCard extends LitElement {
     const firstUser = this.bubbles.find((b) => b.role === 'user')
     if (!firstUser?.text) return
 
-    // Derive title: first 40 chars trimmed to word boundary
+    // Derive title: first 60 chars trimmed to word boundary
     let title = firstUser.text.slice(0, 60)
     if (firstUser.text.length > 60) {
       const lastSpace = title.lastIndexOf(' ')
@@ -666,10 +693,10 @@ export class BonnieCard extends LitElement {
     title = title.trim()
     if (!title) return
 
-    await updateSessionTitle(this.config.backend_url, this.sessionToken, this.activeSessionId, title)
-    // Update local state
-    this.sessions = this.sessions.map((s) => s.id === this.activeSessionId ? { ...s, title } : s)
-    if (this.activeSessionId === this.activeSessionId) this.activeSessionTitle = title
+    await updateSessionTitle(this.config.backend_url, this.sessionToken, capturedSessionId!, title)
+    // Update local state — only if user is still on the same session
+    this.sessions = this.sessions.map((s) => s.id === capturedSessionId ? { ...s, title } : s)
+    if (this.activeSessionId === capturedSessionId) this.activeSessionTitle = title
   }
 
   // Feature 5: Voice input methods
@@ -845,9 +872,7 @@ export class BonnieCard extends LitElement {
     }
     const toUpload = files.slice(0, remaining)
 
-    for (const file of toUpload) {
-      await this._uploadFile(file)
-    }
+    await Promise.all(toUpload.map((file) => this._uploadFile(file)))
   }
 
   private async _uploadFile(file: File): Promise<void> {
@@ -1205,24 +1230,28 @@ export class BonnieCard extends LitElement {
         ` : nothing}
       </div>
 
-      <!-- Feature 8: Permission card -->
-      ${b.role === 'assistant' && !b.streaming && this.activePermissionRequest ? html`
-        <div class="bubble-row assistant">
-          <div class="permission-card">
-            <div class="permission-header">
-              ${svgKey()}
-              <span class="permission-title">Permission required</span>
-            </div>
-            <div class="permission-body">
-              Bonnie wants to use <strong>${this.activePermissionRequest.toolName}</strong>${this.activePermissionRequest.toolDescription ? html` — ${this.activePermissionRequest.toolDescription}` : nothing}
-            </div>
-            <div class="permission-actions">
-              <button class="permission-deny-btn" @click=${() => this._respondPermission(false)}>Deny</button>
-              <button class="permission-approve-btn" @click=${() => this._respondPermission(true)}>Approve</button>
-            </div>
+    `
+  }
+
+  /** Render the permission card once (outside the bubble loop). */
+  private _renderPermissionCard(): TemplateResult | typeof nothing {
+    if (!this.activePermissionRequest) return nothing
+    return html`
+      <div class="bubble-row assistant">
+        <div class="permission-card">
+          <div class="permission-header">
+            ${svgKey()}
+            <span class="permission-title">Permission required</span>
+          </div>
+          <div class="permission-body">
+            Bonnie wants to use <strong>${this.activePermissionRequest.toolName}</strong>${this.activePermissionRequest.toolDescription ? html` — ${this.activePermissionRequest.toolDescription}` : nothing}
+          </div>
+          <div class="permission-actions">
+            <button class="permission-deny-btn" @click=${() => this._respondPermission(false)}>Deny</button>
+            <button class="permission-approve-btn" @click=${() => this._respondPermission(true)}>Approve</button>
           </div>
         </div>
-      ` : nothing}
+      </div>
     `
   }
 
@@ -1581,7 +1610,7 @@ export class BonnieCard extends LitElement {
                                   `)}
                                 </div>
                               </div>`
-                            : this.bubbles.map((b) => this._renderBubble(b))}
+                            : html`${this.bubbles.map((b) => this._renderBubble(b))}${this._renderPermissionCard()}`}
                       </div>
                     `}
 
