@@ -41,6 +41,7 @@ import {
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
+import { t, initLocale, suggestedPrompts } from './i18n.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -62,9 +63,9 @@ function relativeTime(dateStr: string): string {
   if (diff < 60) return 'just now'
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  if (diff < 86400 * 2) return 'yesterday'
+  if (diff < 86400 * 2) return t('yesterday')
   if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
 // ── Feature 11 (sidebar): Date grouping helper ─────────────────────────────
@@ -75,10 +76,10 @@ function groupByDate(sessions: Session[]): { label: string; sessions: Session[] 
   const week = new Date(today); week.setDate(week.getDate() - 7)
 
   const groups: { label: string; sessions: Session[] }[] = [
-    { label: 'Today', sessions: [] },
-    { label: 'Yesterday', sessions: [] },
-    { label: 'Previous 7 days', sessions: [] },
-    { label: 'Older', sessions: [] },
+    { label: t('today'), sessions: [] },
+    { label: t('yesterday'), sessions: [] },
+    { label: t('previous7days'), sessions: [] },
+    { label: t('older'), sessions: [] },
   ]
   for (const s of sessions) {
     const d = new Date(s.updated_at)
@@ -106,6 +107,9 @@ export class BonnieCard extends LitElement {
     if (!config.kiosk_token) throw new Error('bonnie-ai-card: kiosk_token is required')
     const isFirstConfig = !this.config
     this.config = config
+    // Resolve locale from card config → HA language → navigator.language → 'en'
+    const hassLang = (this as any).hass?.language as string | undefined
+    initLocale(config.locale, hassLang)
     if (config.height !== undefined) {
       const h = typeof config.height === 'number' ? `${config.height}px` : config.height
       this.style.setProperty('--bonnie-card-height', h)
@@ -413,7 +417,7 @@ export class BonnieCard extends LitElement {
     this._resetSessionStats()
     clearMarkdownCache()
     try {
-      const ts = new Date().toLocaleString('en-GB', {
+      const ts = new Date().toLocaleString(undefined, {
         day: '2-digit',
         month: 'short',
         hour: '2-digit',
@@ -505,6 +509,30 @@ export class BonnieCard extends LitElement {
     if (this.activeSessionId) {
       void this._send(text)
     }
+  }
+
+  // ── Feature 2: Personalized suggested prompts ────────────────────────────
+  // Combines locale-specific defaults with up to 2 recent session titles.
+
+  private _buildSuggestedPrompts(): string[] {
+    const defaults = [...suggestedPrompts()]
+    // Grab last 5 non-archived sessions, filter out auto-generated titles
+    const recentTitles = this.sessions
+      .filter((s) => !s.archived)
+      .slice(0, 5)
+      .map((s) => s.title?.trim())
+      .filter((title): title is string =>
+        !!title &&
+        !BonnieCard.AUTO_TITLE_RE.test(title) &&
+        title.length > 3 &&
+        title.length < 60,
+      )
+    // Convert to "Continue: <title>" prompts, deduplicate against defaults
+    const recent = recentTitles
+      .slice(0, 2)
+      .map((title) => `Continue: ${title}`)
+      .filter((p) => !defaults.includes(p))
+    return [...defaults, ...recent]
   }
 
   private _onRenameKeydown(e: KeyboardEvent, id: string): void {
@@ -810,7 +838,7 @@ export class BonnieCard extends LitElement {
       // Connect to the already-running turn stream
       void this._openStream(result.turn_id)
       this.streamingTurnId = result.turn_id
-      this._showToast('Conversation forked')
+      this._showToast('Conversation forked') // intentionally not translated (dev message)
 
     } catch (e) {
       this.errorMessage = e instanceof Error ? e.message : 'Fork failed'
@@ -947,10 +975,10 @@ export class BonnieCard extends LitElement {
         if (hasStreamingBubble) {
           this.bubbles = this.bubbles.map((b) =>
             b.streaming
-              ? { ...b, streaming: false, text: (b.text ?? '') + ' *(response may be incomplete)*' }
+              ? { ...b, streaming: false, text: (b.text ?? '') + ` *${t('responseIncomplete')}*` }
               : b,
           )
-          this._showToast('Connection closed')
+          this._showToast(t('connectionClosed'))
         }
         this._finishStream()
         return
@@ -1004,10 +1032,10 @@ export class BonnieCard extends LitElement {
     const hasCost = this.sessionTotalCostUsd > 0
     return html`
       <div class="session-token-bar">
-        <span class="token-bar-tokens">${this._formatTokenCount(total)} tokens</span>
+        <span class="token-bar-tokens">${this._formatTokenCount(total)} ${t('tokens')}</span>
         ${hasCost ? html`<span class="token-bar-sep">·</span><span class="token-bar-cost">$${this.sessionTotalCostUsd.toFixed(4)}</span>` : nothing}
         <span class="token-bar-sep">·</span>
-        <span class="token-bar-turns">${this.sessionTurnCount} ${this.sessionTurnCount === 1 ? 'turn' : 'turns'}</span>
+        <span class="token-bar-turns">${this.sessionTurnCount} ${this.sessionTurnCount === 1 ? t('turn') : t('turns')}</span>
       </div>
     `
   }
@@ -1740,8 +1768,8 @@ export class BonnieCard extends LitElement {
             }}
           ></textarea>
           <div class="edit-actions">
-            <button class="edit-cancel-btn" @click=${() => this._cancelEdit()}>Cancel</button>
-            <button class="edit-send-btn" @click=${() => this._submitEdit()}>Send</button>
+            <button class="edit-cancel-btn" @click=${() => this._cancelEdit()}>${t('cancel')}</button>
+            <button class="edit-send-btn" @click=${() => this._submitEdit()}>${t('send')}</button>
           </div>
         </div>
       </div>
@@ -1818,34 +1846,34 @@ export class BonnieCard extends LitElement {
               ? html`
                 <button
                   class="session-action-btn"
-                  aria-label="Unarchive conversation"
-                  title="Unarchive"
+                  aria-label=${t('unarchive')}
+                  title=${t('unarchive')}
                   @click=${(e: Event) => this._unarchiveSession(s, e)}
                 >${svgUnarchive()}</button>
               `
               : html`
                 <button
                   class=${classMap({ 'session-action-btn': true, 'pinned-btn': isPinned })}
-                  aria-label=${isPinned ? 'Unpin conversation' : 'Pin conversation'}
-                  title=${isPinned ? 'Unpin' : 'Pin'}
+                  aria-label=${isPinned ? t('unpin') : t('pin')}
+                  title=${isPinned ? t('unpin') : t('pin')}
                   @click=${(e: Event) => this._togglePin(s, e)}
                 >${svgPin()}</button>
                 <button
                   class="session-action-btn"
-                  aria-label="Rename conversation"
-                  title="Rename"
+                  aria-label=${t('rename')}
+                  title=${t('rename')}
                   @click=${(e: Event) => this._startRename(s.id, s.title, e)}
                 >${svgPencil()}</button>
                 <button
                   class="session-action-btn"
-                  aria-label="Archive conversation"
-                  title="Archive"
+                  aria-label=${t('archive')}
+                  title=${t('archive')}
                   @click=${(e: Event) => this._archiveSession(s, e)}
                 >${svgArchive()}</button>
                 <button
                   class="session-action-btn delete"
-                  aria-label="Delete conversation"
-                  title="Delete"
+                  aria-label=${t('delete')}
+                  title=${t('delete')}
                   @click=${(e: Event) => { e.stopPropagation(); this.confirmDeleteId = s.id }}
                 >${svgTrash()}</button>
               `}
@@ -1865,14 +1893,14 @@ export class BonnieCard extends LitElement {
       <div class="sidebar-top">
         <button class="new-chat-btn" @click=${this._newSession}>
           ${svgPlus()}
-          New conversation
+          ${t('newConversation')}
         </button>
         <div class="search-wrap">
           <span class="search-icon">${svgSearch()}</span>
           <input
             class="search-input"
             type="text"
-            placeholder="Search conversations…"
+            placeholder=${t('searchConversations')}
             .value=${this.searchQuery}
             @input=${(e: Event) => { this.searchQuery = (e.target as HTMLInputElement).value }}
           />
@@ -1880,12 +1908,12 @@ export class BonnieCard extends LitElement {
       </div>
       ${items.length === 0
         ? html`<div class="session-empty">
-            ${this.searchQuery ? 'No matching conversations' : 'No conversations yet. Start a new one!'}
+            ${this.searchQuery ? 'No matching conversations' : t('noConversations')}
           </div>`
         : html`
           <div class="session-list">
             ${pinnedItems.length > 0 ? html`
-              <div class="sidebar-section-label pinned-label">Pinned</div>
+              <div class="sidebar-section-label pinned-label">${t('pinned')}</div>
               ${pinnedItems.map((s) => this._renderSessionItem(s))}
             ` : nothing}
             ${groups.map((g) => html`
@@ -1897,13 +1925,13 @@ export class BonnieCard extends LitElement {
       <!-- Archived toggle -->
       <div class="archived-toggle-wrap">
         <button class="archived-toggle-btn" @click=${() => this._toggleArchivedView()}>
-          ${this.showArchivedSessions ? '▾' : '▸'} Archived
+          ${this.showArchivedSessions ? '▾' : '▸'} ${t('archived')}
           ${this.archivedSessions.length > 0 ? html`<span class="archived-count">${this.archivedSessions.length}</span>` : nothing}
         </button>
       </div>
       ${this.showArchivedSessions && this.archivedSessions.length > 0 ? html`
         <div class="session-list archived-list">
-          <div class="sidebar-section-label">Archived</div>
+          <div class="sidebar-section-label">${t('archived')}</div>
           ${this.archivedSessions.map((s) => this._renderSessionItem(s, true))}
         </div>
       ` : nothing}
@@ -2021,8 +2049,8 @@ export class BonnieCard extends LitElement {
                 <div class="confirm-title">Delete conversation?</div>
                 <div class="confirm-body">This cannot be undone. The conversation and all its messages will be permanently deleted.</div>
                 <div class="confirm-actions">
-                  <button class="confirm-btn cancel" @click=${() => { this.confirmDeleteId = null }}>Cancel</button>
-                  <button class="confirm-btn danger" @click=${() => this._deleteSession(this.confirmDeleteId!)}>Delete</button>
+                  <button class="confirm-btn cancel" @click=${() => { this.confirmDeleteId = null }}>${t('cancel')}</button>
+                  <button class="confirm-btn danger" @click=${() => this._deleteSession(this.confirmDeleteId!)}>${t('delete')}</button>
                 </div>
               </div>
             </div>
@@ -2100,13 +2128,13 @@ export class BonnieCard extends LitElement {
                 ${this.showExportMenu ? html`
                   <div class="export-menu" @click=${(e: Event) => e.stopPropagation()}>
                     <button class="export-menu-item" @click=${() => this._copyAllConversation()}>
-                      ${svgCopy()} Copy all as Markdown
+                      ${svgCopy()} ${t('copyAll')}
                     </button>
                     <button class="export-menu-item" @click=${() => this._exportMarkdown()}>
-                      ${svgDownload()} Export as Markdown
+                      ${svgDownload()} ${t('exportMarkdown')}
                     </button>
                     <button class="export-menu-item" @click=${() => this._exportJson()}>
-                      ${svgDownload()} Export as JSON
+                      ${svgDownload()} ${t('exportJson')}
                     </button>
                   </div>
                 ` : nothing}
@@ -2159,7 +2187,7 @@ export class BonnieCard extends LitElement {
               </div>
             </div>
             ${this.isWide
-              ? html`<button class="icon-btn" aria-label="New conversation" @click=${this._newSession} title="New conversation (Cmd+N)">
+              ? html`<button class="icon-btn" aria-label=${t('newConversation')} @click=${this._newSession} title="${t('newConversation')} (Cmd+N)">
                   ${svgPlus()}
                 </button>`
               : nothing}
@@ -2204,10 +2232,10 @@ export class BonnieCard extends LitElement {
                       <div class="messages">
                         <div class="empty-state">
                           <div class="empty-icon-wrap">${svgBrandMarkLarge()}</div>
-                          <div class="empty-heading">Ask Bonnie anything</div>
+                          <div class="empty-heading">${t('askAnything')}</div>
                           <div class="empty-subtext">Your AI home assistant, ready to help with automations, devices, and more.</div>
                           <div class="suggested-prompts">
-                            ${['What\'s playing on my speakers?', 'Turn off the living room lights', 'Summarise today\'s calendar'].map((p) => html`
+                            ${this._buildSuggestedPrompts().map((p) => html`
                               <button class="suggested-prompt-btn" @click=${() => this._startWithPrompt(p)}>${p}</button>
                             `)}
                           </div>
@@ -2233,9 +2261,9 @@ export class BonnieCard extends LitElement {
                             }}
                           ></textarea>
                           <div class="system-prompt-actions">
-                            <button class="system-prompt-clear-btn" @click=${() => this._clearSystemPrompt()}>Clear</button>
-                            <button class="system-prompt-cancel-btn" @click=${() => { this.showSystemPromptPanel = false }}>Cancel</button>
-                            <button class="system-prompt-save-btn" @click=${() => void this._saveSystemPrompt()}>Save</button>
+                            <button class="system-prompt-clear-btn" @click=${() => this._clearSystemPrompt()}>${t('clear')}</button>
+                            <button class="system-prompt-cancel-btn" @click=${() => { this.showSystemPromptPanel = false }}>${t('cancel')}</button>
+                            <button class="system-prompt-save-btn" @click=${() => void this._saveSystemPrompt()}>${t('save')}</button>
                           </div>
                         </div>
                       ` : nothing}
@@ -2285,10 +2313,10 @@ export class BonnieCard extends LitElement {
                           : this.bubbles.length === 0
                             ? html`<div class="empty-state">
                                 <div class="empty-icon-wrap">${svgBrandMarkLarge()}</div>
-                                <div class="empty-heading">Start the conversation</div>
+                                <div class="empty-heading">${t('startConversation')}</div>
                                 <div class="empty-subtext">Ask Bonnie to control devices, set automations, or just chat.</div>
                                 <div class="suggested-prompts">
-                                  ${(['What\'s playing on my speakers?', 'Turn off the living room lights', 'Summarise today\'s calendar']).map((p) => html`
+                                  ${this._buildSuggestedPrompts().map((p) => html`
                                     <button class="suggested-prompt-btn" @click=${() => this._startWithPrompt(p)}>${p}</button>
                                   `)}
                                 </div>
@@ -2347,8 +2375,8 @@ export class BonnieCard extends LitElement {
                   <!-- Feature 11: Attach button -->
                   <button
                     class="attach-btn"
-                    aria-label="Attach image"
-                    title="Attach image"
+                    aria-label=${t('attach')}
+                    title=${t('attach')}
                     ?disabled=${isStreaming || this.uploadingCount > 0 || this.pendingAttachments.length >= 3}
                     @click=${() => this._openFilePicker()}
                   >${svgPaperclip()}</button>
@@ -2356,16 +2384,16 @@ export class BonnieCard extends LitElement {
                   ${this.hasSpeechRecognition ? html`
                     <button
                       class=${classMap({ 'mic-btn': true, listening: this.isListening })}
-                      aria-label="Voice input"
+                      aria-label=${t('voice')}
                       @click=${() => this._toggleVoice()}
-                      title=${this.isListening ? 'Stop listening' : 'Voice input'}
+                      title=${this.isListening ? 'Stop listening' : t('voice')}
                       ?disabled=${isStreaming}
                     >${svgMic()}</button>
                   ` : nothing}
                   <textarea
                     class="composer-textarea"
                     rows="1"
-                    placeholder=${isStreaming ? 'Bonnie is thinking…' : this.isListening ? 'Listening…' : 'Message Bonnie… (Enter to send, Shift+Enter for newline)'}
+                    placeholder=${isStreaming ? t('thinking') : this.isListening ? 'Listening…' : t('messagePlaceholder')}
                     .value=${this.draft}
                     ?disabled=${isStreaming || this.loading || !this.sessionToken}
                     @input=${this._onInput}
@@ -2373,10 +2401,10 @@ export class BonnieCard extends LitElement {
                   ></textarea>
                   <button
                     class=${classMap({ 'send-btn': true, stop: isStreaming })}
-                    aria-label=${isStreaming ? 'Stop generating' : 'Send message'}
+                    aria-label=${isStreaming ? t('stop') : t('send')}
                     ?disabled=${!isStreaming && !canSend}
                     @click=${isStreaming ? this._cancel : this._send}
-                    title=${isStreaming ? 'Stop generating (Esc)' : 'Send (Enter)'}
+                    title=${isStreaming ? `${t('stop')} (Esc)` : `${t('send')} (Enter)`}
                   >
                     ${isStreaming ? svgStop() : svgSend()}
                   </button>

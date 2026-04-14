@@ -7,6 +7,7 @@ export interface BonnieCardConfig {
   title?: string
   height?: number | string
   model?: string
+  locale?: string
 }
 
 // ── API types ─────────────────────────────────────────────────────────────────
