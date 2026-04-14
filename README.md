@@ -4,8 +4,8 @@ A native Home Assistant Lovelace card for chatting with a [Bonnie AI Chat](https
 
 ## Screenshots
 
-<!-- TODO: add real screenshots before publishing -->
-*Screenshots will be added before the first release.*
+![Bonnie AI Card — Desktop](docs/screenshot-wide.png)
+![Bonnie AI Card — Mobile](docs/screenshot-narrow.png)
 
 ## Installation
 
