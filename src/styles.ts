@@ -2149,4 +2149,227 @@ export const cardStyles = css`
     border-color: var(--bonnie-accent);
     color: var(--bonnie-ink-0);
   }
+
+  /* ── Feature T4-1: Active icon button variant ───────────────────────── */
+  .icon-btn--active {
+    color: var(--bonnie-accent) !important;
+  }
+
+  /* ── Feature T4-1: System prompt panel ─────────────────────────────── */
+  .system-prompt-panel {
+    flex-shrink: 0;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--bonnie-border);
+    background: var(--bonnie-surface-1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .system-prompt-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .system-prompt-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--bonnie-ink-0);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .system-prompt-hint {
+    font-size: 11px;
+    color: var(--bonnie-ink-2);
+  }
+
+  .system-prompt-textarea {
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: var(--bonnie-radius-sm);
+    color: var(--bonnie-ink-0);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+    resize: vertical;
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+  }
+
+  .system-prompt-textarea:focus {
+    border-color: var(--bonnie-accent);
+  }
+
+  .system-prompt-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .system-prompt-clear-btn,
+  .system-prompt-cancel-btn,
+  .system-prompt-save-btn {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--bonnie-border);
+    transition: background 0.12s;
+  }
+
+  .system-prompt-clear-btn {
+    background: transparent;
+    color: var(--bonnie-ink-2);
+    margin-right: auto;
+  }
+
+  .system-prompt-cancel-btn {
+    background: transparent;
+    color: var(--bonnie-ink-1);
+  }
+
+  .system-prompt-save-btn {
+    background: var(--bonnie-accent);
+    color: #000;
+    border-color: transparent;
+  }
+
+  .system-prompt-clear-btn:hover { color: var(--bonnie-ink-0); }
+  .system-prompt-cancel-btn:hover { background: var(--bonnie-surface-3); }
+  .system-prompt-save-btn:hover { filter: brightness(1.1); }
+
+  /* ── Feature T4-2: Message search panel ────────────────────────────── */
+  .msg-search-panel {
+    flex-shrink: 0;
+    background: var(--bonnie-surface-1);
+    border-bottom: 1px solid var(--bonnie-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .msg-search-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .msg-search-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: var(--bonnie-ink-2);
+    display: flex;
+  }
+
+  .msg-search-icon svg {
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .msg-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--bonnie-ink-0);
+  }
+
+  .msg-search-input::placeholder {
+    color: var(--bonnie-ink-3);
+  }
+
+  .msg-search-close {
+    flex-shrink: 0;
+  }
+
+  .msg-search-loading,
+  .msg-search-empty {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--bonnie-ink-2);
+  }
+
+  .msg-search-results {
+    display: flex;
+    flex-direction: column;
+    max-height: 200px;
+    overflow-y: auto;
+    border-top: 1px solid var(--bonnie-border-soft);
+  }
+
+  .msg-search-result {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--bonnie-border-soft);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .msg-search-result:hover {
+    background: var(--bonnie-surface-2);
+  }
+
+  .msg-search-result-role {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bonnie-accent);
+  }
+
+  .msg-search-result-snippet {
+    font-size: 12px;
+    color: var(--bonnie-ink-1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .msg-search-result-snippet mark {
+    background: color-mix(in srgb, var(--bonnie-accent) 30%, transparent);
+    color: var(--bonnie-ink-0);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  /* Flash highlight when scrolling to a searched turn */
+  .search-highlight-flash {
+    animation: searchFlash 1.5s ease-out;
+  }
+
+  @keyframes searchFlash {
+    0% { background: color-mix(in srgb, var(--bonnie-accent) 20%, transparent); }
+    100% { background: transparent; }
+  }
+
+  /* ── Feature T4-3: Virtualization spacer ───────────────────────────── */
+  .virt-top-spacer {
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+
+  .virt-top-sentinel {
+    height: 1px;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
 `

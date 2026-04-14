@@ -20,8 +20,15 @@ export interface Session {
   id: string
   title: string
   claude_session_id: string | null
+  system_prompt?: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SearchResult {
+  turn_id: string
+  snippet: string
+  role: string
 }
 
 export interface Turn {
@@ -126,6 +133,8 @@ export interface Bubble {
   permissionRequest?: { turnId: string; toolName: string; toolDescription?: string }
   /** Uploaded image attachments on user bubbles */
   attachments?: UploadedAttachment[]
+  /** Source turn ID — used for message search scroll-to */
+  turnId?: string
 }
 
 // ── API rename session ────────────────────────────────────────────────────────

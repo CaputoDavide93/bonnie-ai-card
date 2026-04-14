@@ -181,6 +181,36 @@ export async function deleteUpload(
   }
 }
 
+/** Update the session system prompt (pass null/empty to clear) */
+export async function updateSessionSystemPrompt(
+  baseUrl: string,
+  token: string,
+  sessionId: string,
+  systemPrompt: string | null,
+): Promise<void> {
+  try {
+    await request<unknown>(`${baseUrl}/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ system_prompt: systemPrompt ?? '' }),
+    })
+  } catch {
+    // Best-effort
+  }
+}
+
+/** Search messages within a conversation */
+export async function searchSession(
+  baseUrl: string,
+  token: string,
+  sessionId: string,
+  query: string,
+): Promise<{ turn_id: string; snippet: string; role: string }[]> {
+  const url = new URL(`${baseUrl}/api/sessions/${sessionId}/search`)
+  url.searchParams.set('q', query)
+  return request<{ turn_id: string; snippet: string; role: string }[]>(url.toString(), { token })
+}
+
 /** Respond to a permission request */
 export async function respondPermission(
   baseUrl: string,
