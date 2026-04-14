@@ -17,7 +17,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
 import type { BonnieCardConfig, ConversationTemplate, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult, Plugin } from './types.js'
-import type { AuditStats, AuditDailyEntry, Memory, PluginCreate } from './api.js'
+import type { AuditStats, AuditDailyEntry, Memory, PluginCreate, UserSettings } from './api.js'
 import {
   ApiError,
   kioskExchange,
@@ -44,10 +44,13 @@ import {
   fetchAuditDaily,
   listMemories,
   deleteMemory,
+  createMemory,
   listPlugins,
   createPlugin,
   updatePlugin,
   deletePlugin,
+  fetchSettings,
+  patchSettings,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -228,6 +231,15 @@ export class BonnieCard extends LitElement {
   @state() private showMemories = false
   @state() private memories: Memory[] = []
   @state() private memoriesLoading = false
+  @state() private memoryAddMode = false
+  @state() private memoryFormKey = ''
+  @state() private memoryFormValue = ''
+
+  // User settings panel
+  @state() private showSettings = false
+  @state() private userSettings: import('./api.js').UserSettings = {}
+  @state() private settingsLoading = false
+  @state() private settingsSaving = false
 
   // Feature 12: Plugin admin panel (admin only)
   @state() private showPlugins = false
@@ -241,6 +253,8 @@ export class BonnieCard extends LitElement {
   private _fileInput: HTMLInputElement | null = null
 
   private _eventSource: EventSource | null = null
+  private _streamGeneration = 0
+  private _scrollHandler: (() => void) | null = null
   private _resizeObserver: ResizeObserver | null = null
   private _userScrolled = false
   private _lastUserMessageText = ''
@@ -289,6 +303,12 @@ export class BonnieCard extends LitElement {
       const ta = this.shadowRoot?.querySelector<HTMLTextAreaElement>('.composer-textarea')
       if (ta) ta.removeEventListener('paste', this._onPaste as EventListener)
       this._onPaste = null
+    }
+    // Remove scroll + code-copy listeners to prevent memory leaks
+    const msgs = this.shadowRoot?.querySelector('.messages')
+    if (msgs) {
+      if (this._scrollHandler) { msgs.removeEventListener('scroll', this._scrollHandler); this._scrollHandler = null }
+      if ((msgs as any)._copyHandler) { msgs.removeEventListener('click', (msgs as any)._copyHandler); (msgs as any)._copyHandler = null }
     }
   }
 
@@ -405,6 +425,37 @@ export class BonnieCard extends LitElement {
     this.showAnalytics = false
   }
 
+  // ── User Settings panel ──────────────────────────────────────────────────
+
+  private async _openSettings(): Promise<void> {
+    this.showSettings = true
+    this.settingsLoading = true
+    try {
+      this.userSettings = await fetchSettings(this.config.backend_url, this.sessionToken!)
+    } catch {
+      this.userSettings = {}
+    } finally {
+      this.settingsLoading = false
+    }
+  }
+
+  private _closeSettings(): void {
+    this.showSettings = false
+  }
+
+  private async _saveSettings(patch: Partial<UserSettings>): Promise<void> {
+    if (!this.sessionToken) return
+    this.settingsSaving = true
+    try {
+      this.userSettings = await patchSettings(this.config.backend_url, this.sessionToken, patch)
+      this._showToast('Settings saved')
+    } catch {
+      this._showToast('Failed to save settings')
+    } finally {
+      this.settingsSaving = false
+    }
+  }
+
   // ── Feature 6: Conversation Memory ────────────────────────────────────────
 
   private async _openMemories(): Promise<void> {
@@ -430,6 +481,19 @@ export class BonnieCard extends LitElement {
       this.memories = this.memories.filter((m) => m.id !== memId)
     } catch {
       // best-effort; ignore
+    }
+  }
+
+  private async _addMemory(): Promise<void> {
+    if (!this.sessionToken || !this.memoryFormKey.trim() || !this.memoryFormValue.trim()) return
+    try {
+      const mem = await createMemory(this.config.backend_url, this.sessionToken, this.memoryFormKey.trim(), this.memoryFormValue.trim())
+      this.memories = [mem, ...this.memories]
+      this.memoryFormKey = ''
+      this.memoryFormValue = ''
+      this.memoryAddMode = false
+    } catch {
+      this._showToast('Failed to save memory')
     }
   }
 
@@ -940,12 +1004,14 @@ export class BonnieCard extends LitElement {
     }, 300)
 
     try {
+      const paths = sentAttachments.filter((a) => a.path).map((a) => a.path!)
       const { turn_id } = await postChat(
         this.config.backend_url,
         this.sessionToken,
         this.activeSessionId,
         messageWithAttachments,
         this.selectedModel || this.config.model,
+        paths.length > 0 ? paths : undefined,
       )
       this.streamingTurnId = turn_id
       this._turnStartTime = Date.now()
@@ -1067,6 +1133,7 @@ export class BonnieCard extends LitElement {
 
   private async _openStream(turnId: string): Promise<void> {
     this._closeStream()
+    const gen = ++this._streamGeneration
     // Fetch a short-lived ticket so the session token never appears in the SSE URL
     let url: string
     try {
@@ -1076,6 +1143,8 @@ export class BonnieCard extends LitElement {
       // Fall back to bearer-in-query-param if ticket endpoint is unavailable
       url = streamUrl(this.config.backend_url, this.sessionToken!, turnId)
     }
+    // Guard: if user navigated away during the await, abort
+    if (gen !== this._streamGeneration) return
     const es = new EventSource(url)
     this._eventSource = es
 
@@ -1243,9 +1312,9 @@ export class BonnieCard extends LitElement {
   }
 
   private _accumulateSessionStats(stats: TurnStats): void {
-    if (stats.inputTokens) this.sessionTotalInputTokens += stats.inputTokens
-    if (stats.outputTokens) this.sessionTotalOutputTokens += stats.outputTokens
-    if (stats.costUsd) this.sessionTotalCostUsd += stats.costUsd
+    if (stats.inputTokens != null) this.sessionTotalInputTokens += stats.inputTokens
+    if (stats.outputTokens != null) this.sessionTotalOutputTokens += stats.outputTokens
+    if (stats.costUsd != null) this.sessionTotalCostUsd += stats.costUsd
     this.sessionTurnCount += 1
   }
 
@@ -1692,7 +1761,7 @@ export class BonnieCard extends LitElement {
     this.updateComplete.then(() => {
       const msgs = this.shadowRoot?.querySelector('.messages')
       if (!msgs) return
-      msgs.addEventListener('scroll', () => {
+      this._scrollHandler = () => {
         const el = msgs as HTMLElement
         const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
         if (isAtBottom) {
@@ -1701,7 +1770,8 @@ export class BonnieCard extends LitElement {
         } else {
           this._userScrolled = true
         }
-      }, { passive: true })
+      }
+      msgs.addEventListener('scroll', this._scrollHandler, { passive: true })
     })
   }
 
@@ -2285,6 +2355,53 @@ export class BonnieCard extends LitElement {
             </div>
           ` : nothing}
 
+          <!-- Settings overlay -->
+          ${this.showSettings ? html`
+            <div class="analytics-overlay" @click=${() => this._closeSettings()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgGear()} Settings</span>
+                  <button class="icon-btn" @click=${() => this._closeSettings()} aria-label="Close">${svgClose()}</button>
+                </div>
+                ${this.settingsLoading ? html`<div style="padding:1rem;color:var(--bonnie-ink-2)">Loading...</div>` : html`
+                  <div style="padding:1rem;display:flex;flex-direction:column;gap:12px;overflow-y:auto;max-height:calc(80vh - 60px)">
+                    <div class="settings-field">
+                      <label class="settings-label">Tone</label>
+                      <select class="sys-prompt-input" .value=${this.userSettings.tone ?? ''}
+                        @change=${(e: Event) => void this._saveSettings({ tone: (e.target as HTMLSelectElement).value })}>
+                        <option value="">Default</option>
+                        <option value="friendly" ?selected=${this.userSettings.tone === 'friendly'}>Friendly</option>
+                        <option value="professional" ?selected=${this.userSettings.tone === 'professional'}>Professional</option>
+                        <option value="concise" ?selected=${this.userSettings.tone === 'concise'}>Concise</option>
+                        <option value="casual" ?selected=${this.userSettings.tone === 'casual'}>Casual</option>
+                      </select>
+                    </div>
+                    <div class="settings-field">
+                      <label class="settings-label">Language</label>
+                      <select class="sys-prompt-input" .value=${this.userSettings.language ?? ''}
+                        @change=${(e: Event) => void this._saveSettings({ language: (e.target as HTMLSelectElement).value })}>
+                        <option value="">Auto-detect</option>
+                        <option value="en" ?selected=${this.userSettings.language === 'en'}>English</option>
+                        <option value="it" ?selected=${this.userSettings.language === 'it'}>Italiano</option>
+                      </select>
+                    </div>
+                    <div class="settings-field">
+                      <label class="settings-label">Auto-delete conversations after (days)</label>
+                      <input type="number" class="sys-prompt-input" min="0" max="365" placeholder="0 = never"
+                        .value=${String(this.userSettings.auto_delete_days ?? '')}
+                        @change=${(e: Event) => {
+                          const v = parseInt((e.target as HTMLInputElement).value, 10)
+                          void this._saveSettings({ auto_delete_days: isNaN(v) ? 0 : v })
+                        }}
+                      />
+                    </div>
+                    ${this.settingsSaving ? html`<div style="font-size:0.8rem;color:var(--bonnie-accent)">Saving...</div>` : nothing}
+                  </div>
+                `}
+              </div>
+            </div>
+          ` : nothing}
+
           <!-- Feature 13: Analytics overlay -->
           ${this.showAnalytics ? html`
             <div class="analytics-overlay" @click=${() => this._closeAnalytics()}>
@@ -2367,14 +2484,30 @@ export class BonnieCard extends LitElement {
             <div class="analytics-overlay" @click=${() => this._closeMemories()}>
               <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
-                  <span class="analytics-title">${svgMemory()} Saved Memories</span>
-                  <button class="icon-btn" @click=${() => this._closeMemories()}>${svgClose()}</button>
+                  <span class="analytics-title">${svgMemory()} Saved Memories (${this.memories.length})</span>
+                  <div style="display:flex;gap:4px;align-items:center">
+                    <button class="icon-btn" title="Add memory" @click=${() => { this.memoryAddMode = !this.memoryAddMode }}>${svgPlus()}</button>
+                    <button class="icon-btn" @click=${() => this._closeMemories()}>${svgClose()}</button>
+                  </div>
                 </div>
+                ${this.memoryAddMode ? html`
+                  <div style="padding:8px 12px;border-bottom:1px solid var(--bonnie-border);display:flex;flex-direction:column;gap:6px">
+                    <input class="sys-prompt-input" placeholder="Key (e.g. favorite_color)" .value=${this.memoryFormKey}
+                      @input=${(e: Event) => { this.memoryFormKey = (e.target as HTMLInputElement).value }} />
+                    <input class="sys-prompt-input" placeholder="Value (e.g. blue)" .value=${this.memoryFormValue}
+                      @input=${(e: Event) => { this.memoryFormValue = (e.target as HTMLInputElement).value }}
+                      @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') void this._addMemory() }} />
+                    <div style="display:flex;gap:6px;justify-content:flex-end">
+                      <button class="system-prompt-cancel-btn" @click=${() => { this.memoryAddMode = false }}>Cancel</button>
+                      <button class="system-prompt-save-btn" @click=${() => void this._addMemory()}>Save</button>
+                    </div>
+                  </div>
+                ` : nothing}
                 ${this.memoriesLoading ? html`
                   <div class="analytics-loading"><div class="loading-spinner"></div></div>
-                ` : this.memories.length === 0 ? html`
-                  <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--muted)">
-                    No memories saved yet. Bonnie will automatically save facts you tell her.
+                ` : this.memories.length === 0 && !this.memoryAddMode ? html`
+                  <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--bonnie-ink-2)">
+                    No memories saved yet. Bonnie will automatically save facts you tell her, or click + to add one.
                   </div>
                 ` : html`
                   <div class="memories-list">
@@ -2446,7 +2579,7 @@ export class BonnieCard extends LitElement {
 
                   <!-- Add plugin form -->
                   ${this.pluginAddMode ? html`
-                    <div style="padding:0.75rem 0;border-top:1px solid var(--border);margin-top:0.5rem">
+                    <div style="padding:0.75rem 0;border-top:1px solid var(--bonnie-border);margin-top:0.5rem">
                       <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem">New plugin</div>
                       <div style="display:flex;flex-direction:column;gap:0.4rem">
                         <input
@@ -2491,7 +2624,7 @@ export class BonnieCard extends LitElement {
                           @input=${(e: Event) => { this.pluginForm = { ...this.pluginForm, example_payload: (e.target as HTMLInputElement).value } }}
                         />
                         ${this.pluginFormError ? html`
-                          <div style="color:var(--danger,#e55);font-size:0.78rem">${this.pluginFormError}</div>
+                          <div style="color:var(--error-color,#F85149);font-size:0.78rem">${this.pluginFormError}</div>
                         ` : nothing}
                         <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.25rem">
                           <button class="confirm-btn cancel" @click=${() => { this.pluginAddMode = false; this.pluginFormError = '' }}>Cancel</button>
@@ -2502,7 +2635,7 @@ export class BonnieCard extends LitElement {
                       </div>
                     </div>
                   ` : html`
-                    <div style="padding-top:0.75rem;border-top:1px solid var(--border);margin-top:0.5rem">
+                    <div style="padding-top:0.75rem;border-top:1px solid var(--bonnie-border);margin-top:0.5rem">
                       <button
                         class="icon-btn"
                         style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;padding:0.3rem 0.5rem"
@@ -2640,6 +2773,15 @@ export class BonnieCard extends LitElement {
                 </div>
               </div>
             </div>
+            <!-- Settings button -->
+            ${this.sessionToken ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showSettings })}
+                aria-label="Settings"
+                title="User settings"
+                @click=${() => this.showSettings ? this._closeSettings() : void this._openSettings()}
+              >${svgGear()}</button>
+            ` : nothing}
             <!-- Feature 6: Memories button -->
             ${this.sessionToken ? html`
               <button
@@ -3103,6 +3245,10 @@ function svgMemory(): TemplateResult {
 }
 
 /** Puzzle / plugin icon (Feature 12) */
+function svgGear(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
+}
+
 function svgPuzzle(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4c-1.1 0-2 .9-2 2v4h1.5a2.5 2.5 0 0 1 0 5H2v4c0 1.1.9 2 2 2h4v-1.5a2.5 2.5 0 0 1 5 0V21h4c1.1 0 2-.9 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg>`
 }

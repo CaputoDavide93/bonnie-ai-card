@@ -388,6 +388,13 @@ export const cardStyles = css`
     display: flex;
   }
 
+  /* Touch screens have no hover — always show actions on coarse pointers */
+  @media (pointer: coarse) {
+    .session-item .session-actions {
+      display: flex;
+    }
+  }
+
   .session-action-btn {
     background: none;
     border: none;
@@ -2347,6 +2354,39 @@ export const cardStyles = css`
   .system-prompt-clear-btn:hover { color: var(--bonnie-ink-0); }
   .system-prompt-cancel-btn:hover { background: var(--bonnie-surface-3); }
   .system-prompt-save-btn:hover { filter: brightness(1.1); }
+
+  /* ── Plugin admin form inputs ──────────────────────────────────────── */
+  .sys-prompt-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: var(--bonnie-radius-sm);
+    color: var(--bonnie-ink-0);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .sys-prompt-input:focus {
+    border-color: var(--bonnie-accent);
+  }
+  .sys-prompt-input::placeholder {
+    color: var(--bonnie-ink-3);
+  }
+
+  /* ── Settings panel fields ─────────────────────────────────────────── */
+  .settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .settings-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--bonnie-ink-1);
+  }
 
   /* ── Feature T4-2: Message search panel ────────────────────────────── */
   .msg-search-panel {

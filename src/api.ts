@@ -94,6 +94,7 @@ export async function postChat(
   conversationId: string,
   message: string,
   model?: string,
+  attachmentPaths?: string[],
 ): Promise<{ turn_id: string }> {
   return request<{ turn_id: string }>(`${baseUrl}/api/chat`, {
     method: 'POST',
@@ -102,6 +103,7 @@ export async function postChat(
       conversation_id: conversationId,
       message,
       ...(model ? { model } : {}),
+      ...(attachmentPaths?.length ? { attachment_paths: attachmentPaths } : {}),
     }),
   })
 }
@@ -290,6 +292,33 @@ export async function fetchTemplates(baseUrl: string): Promise<ConversationTempl
   }
 }
 
+// ── User settings ────────────────────────────────────────────────────────────
+
+export interface UserSettings {
+  tone?: string
+  language?: string
+  model?: string
+  personas?: { id: string; name: string; prompt: string }[]
+  active_persona_id?: string
+  auto_delete_days?: number
+}
+
+export async function fetchSettings(baseUrl: string, token: string): Promise<UserSettings> {
+  return request<UserSettings>(`${baseUrl}/api/settings`, { token })
+}
+
+export async function patchSettings(
+  baseUrl: string,
+  token: string,
+  patch: Partial<UserSettings>,
+): Promise<UserSettings> {
+  return request<UserSettings>(`${baseUrl}/api/settings`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(patch),
+  })
+}
+
 // ── Analytics (admin only) ────────────────────────────────────────────────────
 
 export interface AuditStats {
@@ -335,6 +364,14 @@ export async function listMemories(baseUrl: string, token: string): Promise<Memo
 
 export async function deleteMemory(baseUrl: string, token: string, memoryId: string): Promise<void> {
   return request<void>(`${baseUrl}/api/memories/${memoryId}`, { method: 'DELETE', token })
+}
+
+export async function createMemory(baseUrl: string, token: string, key: string, value: string): Promise<Memory> {
+  return request<Memory>(`${baseUrl}/api/memories`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ key, value }),
+  })
 }
 
 export async function searchMemories(baseUrl: string, token: string, q: string): Promise<Memory[]> {
