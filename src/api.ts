@@ -177,7 +177,7 @@ export async function updateSessionTitle(
   }
 }
 
-/** Upload an image file; returns the server-assigned upload metadata */
+/** Upload a file (image, PDF, text); returns the server-assigned upload metadata */
 export async function uploadImage(
   baseUrl: string,
   token: string,
@@ -198,6 +198,9 @@ export async function uploadImage(
   }
   return res.json() as Promise<UploadResponse>
 }
+
+/** Alias for uploadImage — accepts images, PDFs, and text files */
+export const uploadFile = uploadImage
 
 /** Delete an uploaded file (best-effort) */
 export async function deleteUpload(
@@ -480,4 +483,56 @@ export async function changePassword(baseUrl: string, token: string, userId: str
 
 export async function listRoles(baseUrl: string, token: string): Promise<RoleView[]> {
   return request<RoleView[]>(`${baseUrl}/api/roles`, { token })
+}
+
+// ── Proactive Rules (admin only) ────────────────────────────────────────────
+
+export interface ProactiveRule {
+  id: string
+  name: string
+  entity_id: string
+  condition: string
+  threshold: string
+  message_template: string
+  enabled: boolean
+}
+
+export async function listProactiveRules(baseUrl: string, token: string): Promise<ProactiveRule[]> {
+  return request<ProactiveRule[]>(`${baseUrl}/api/proactive-rules`, { token })
+}
+
+export async function createProactiveRule(
+  baseUrl: string,
+  token: string,
+  rule: Omit<ProactiveRule, 'id'>,
+): Promise<ProactiveRule> {
+  return request<ProactiveRule>(`${baseUrl}/api/proactive-rules`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(rule),
+  })
+}
+
+export async function updateProactiveRule(
+  baseUrl: string,
+  token: string,
+  id: string,
+  patch: Partial<ProactiveRule>,
+): Promise<ProactiveRule> {
+  return request<ProactiveRule>(`${baseUrl}/api/proactive-rules/${id}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteProactiveRule(
+  baseUrl: string,
+  token: string,
+  id: string,
+): Promise<void> {
+  return request<void>(`${baseUrl}/api/proactive-rules/${id}`, {
+    method: 'DELETE',
+    token,
+  })
 }

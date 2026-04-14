@@ -408,6 +408,8 @@ export class BonnieCard extends LitElement {
         fetchTemplates(this.config.backend_url),
       ])
       this.templates = templates
+      // Feature 2: Request browser notification permission for proactive alerts
+      this._requestNotificationPermission()
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         this.authError = true
@@ -416,6 +418,14 @@ export class BonnieCard extends LitElement {
       }
     } finally {
       this.loading = false
+    }
+  }
+
+  private _requestNotificationPermission(): void {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {
+        // Ignore — permission denied or API not available
+      })
     }
   }
 
@@ -1727,7 +1737,7 @@ export class BonnieCard extends LitElement {
     if (!this._fileInput) {
       const input = document.createElement('input')
       input.type = 'file'
-      input.accept = 'image/png,image/jpeg,image/webp,image/gif'
+      input.accept = 'image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.csv'
       input.multiple = true
       input.style.display = 'none'
       input.addEventListener('change', () => void this._onFilesSelected(input))
@@ -1785,10 +1795,10 @@ export class BonnieCard extends LitElement {
   private _handleDroppedFiles(e: DragEvent): void {
     const files = e.dataTransfer?.files
     if (!files || files.length === 0) return
-    const accepted = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-    const images = Array.from(files).filter((f) => accepted.includes(f.type))
-    if (images.length === 0) return
-    void this._onFilesSelected(images)
+    const accepted = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'text/csv']
+    const valid = Array.from(files).filter((f) => accepted.includes(f.type))
+    if (valid.length === 0) return
+    void this._onFilesSelected(valid)
   }
 
   private async _uploadFile(file: File): Promise<void> {
@@ -2153,14 +2163,19 @@ export class BonnieCard extends LitElement {
         <div class=${classMap({ bubble: true, [b.role]: true, error: !!b.error })}>
           ${isUser && b.attachments?.length ? html`
             <div class="bubble-attachments">
-              ${b.attachments.map((a) => html`
-                <img
-                  src=${a.localPreviewUrl}
-                  alt=${a.filename}
-                  title=${a.filename}
-                  @click=${() => this._openLightbox(a.localPreviewUrl)}
-                />
-              `)}
+              ${b.attachments.map((a) => {
+                const isImg = a.mimeType.startsWith('image/')
+                return isImg
+                  ? html`<img
+                      src=${a.localPreviewUrl}
+                      alt=${a.filename}
+                      title=${a.filename}
+                      @click=${() => this._openLightbox(a.localPreviewUrl)}
+                    />`
+                  : html`<span class="bubble-file-chip" title=${a.filename}>
+                      ${a.mimeType === 'application/pdf' ? '\u{1F4C4}' : '\u{1F4DD}'} ${a.filename}
+                    </span>`
+              })}
             </div>
           ` : nothing}
           ${isUser
@@ -3116,7 +3131,7 @@ export class BonnieCard extends LitElement {
               @dragleave=${() => { this.dragOver = false }}
               @drop=${(e: DragEvent) => { e.preventDefault(); this.dragOver = false; this._handleDroppedFiles(e) }}
             >
-              ${this.dragOver ? html`<div class="drop-overlay">Drop image here</div>` : nothing}
+              ${this.dragOver ? html`<div class="drop-overlay">Drop file here</div>` : nothing}
               ${this.loading
                 ? html`<div class="loading-state"><div class="loading-spinner"></div></div>`
                 : !this.activeSessionId
@@ -3270,9 +3285,12 @@ export class BonnieCard extends LitElement {
                     ${this.pendingAttachments.map((a) => {
                       const isUploading = a.uploadId.startsWith('uploading-')
                       const isError = a.uploadId.startsWith('error-')
+                      const isImage = a.mimeType.startsWith('image/')
                       return html`
                         <div class=${classMap({ 'attach-chip': true, uploading: isUploading, error: isError })}>
-                          <img src=${a.localPreviewUrl} alt="" />
+                          ${isImage
+                            ? html`<img src=${a.localPreviewUrl} alt="" />`
+                            : html`<span class="file-icon">${a.mimeType === 'application/pdf' ? '\u{1F4C4}' : '\u{1F4DD}'}</span>`}
                           <span class="filename">${a.filename}</span>
                           ${isUploading
                             ? html`<span class="chip-uploading-indicator"></span>`

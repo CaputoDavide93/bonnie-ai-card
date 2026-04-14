@@ -2190,6 +2190,32 @@ export const cardStyles = css`
     border: 1px solid var(--bonnie-border);
     display: block;
   }
+  .bubble-file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--bonnie-ink-1);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* File icon in attach chip (for non-image files) */
+  .attach-chip .file-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
 
   /* Lightbox overlay */
   .lightbox {
