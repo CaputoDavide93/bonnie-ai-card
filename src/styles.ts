@@ -1089,19 +1089,18 @@ export const cardStyles = css`
   .bubble.user {
     background: var(--bonnie-accent);
     color: var(--bonnie-on-accent);
-    border-bottom-right-radius: 5px;
+    border-bottom-right-radius: 6px;
     font-weight: 500;
     letter-spacing: -0.01em;
-    box-shadow: 0 2px 10px var(--bonnie-accent-focus);
   }
 
   .bubble.assistant {
-    background: var(--bonnie-surface-2);
+    background: transparent;
     color: var(--bonnie-ink-0);
-    border-bottom-left-radius: 5px;
-    border: 1px solid var(--bonnie-border);
-    box-shadow: var(--bonnie-shadow-sm);
-    max-width: 90%;
+    border-radius: 14px;
+    border: 1px solid var(--bonnie-border-soft);
+    max-width: 92%;
+    padding: 8px 14px;
   }
 
   .bubble.error {
@@ -1359,79 +1358,79 @@ export const cardStyles = css`
   /* ── Tool bubble ─────────────────────────────────────── */
   .tool-bubble {
     max-width: 88%;
-    background: var(--bonnie-surface-1);
-    border: 1px solid var(--bonnie-border);
-    border-radius: 12px;
-    font-size: 12.5px;
+    background: transparent;
+    border: 1px solid var(--bonnie-border-soft);
+    border-radius: 10px;
+    font-size: 12px;
     overflow: hidden;
-    color: var(--bonnie-ink-1);
-    box-shadow: var(--bonnie-shadow-sm);
+    color: var(--bonnie-ink-2);
   }
 
   .tool-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 9px 12px;
+    gap: 7px;
+    padding: 6px 10px;
     cursor: pointer;
     user-select: none;
     transition: background 0.12s;
   }
 
   .tool-header:hover {
-    background: var(--bonnie-surface-2);
+    background: var(--bonnie-surface-1);
   }
 
   .tool-icon {
-    width: 20px;
-    height: 20px;
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
-    border-radius: 5px;
-    background: var(--bonnie-accent-soft);
-    color: var(--bonnie-accent);
+    color: var(--bonnie-ink-3);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .tool-icon svg {
-    width: 11px;
-    height: 11px;
+    width: 12px;
+    height: 12px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2.2;
+    stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
 
   .tool-name {
     flex: 1;
-    font-weight: 600;
-    font-size: 12px;
+    font-weight: 500;
+    font-size: 11.5px;
     color: var(--bonnie-ink-1);
     font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    letter-spacing: -0.01em;
   }
 
   .tool-status {
-    font-size: 10.5px;
+    font-size: 10px;
     color: var(--bonnie-ink-3);
-    background: var(--bonnie-surface-3);
-    padding: 2px 7px;
-    border-radius: 10px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
     flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   .tool-status.done {
     color: #3fb950;
-    background: rgba(63, 185, 80, 0.1);
+    background: transparent;
   }
 
   .tool-chevron {
-    width: 13px;
-    height: 13px;
+    width: 11px;
+    height: 11px;
     color: var(--bonnie-ink-3);
     transition: transform 0.15s;
     flex-shrink: 0;
