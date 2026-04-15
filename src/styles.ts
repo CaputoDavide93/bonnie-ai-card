@@ -963,7 +963,7 @@ export const cardStyles = css`
   .bubble-row {
     display: flex;
     max-width: 100%;
-    padding: 2px 0;
+    padding: 28px 0 2px;
     position: relative;
   }
 
@@ -992,16 +992,17 @@ export const cardStyles = css`
     animation: bubble-in 0.2s ease-out forwards;
   }
 
-  /* Message actions hover bar */
+  /* Message actions hover bar — lives inside bubble-row's top padding so
+     hover zone extends up; hovering the bar itself doesn't lose hover. */
   .msg-actions {
     position: absolute;
-    top: -2px;
+    top: 2px;
     display: flex;
     align-items: center;
     gap: 2px;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.15s;
+    transition: opacity 0.12s;
     background: var(--bonnie-surface-2);
     border: 1px solid var(--bonnie-border);
     border-radius: 8px;
@@ -1012,15 +1013,14 @@ export const cardStyles = css`
 
   .bubble-row.user .msg-actions {
     right: 0;
-    transform: translateY(-100%);
   }
 
   .bubble-row.assistant .msg-actions {
     left: 0;
-    transform: translateY(-100%);
   }
 
-  .bubble-row:hover .msg-actions {
+  .bubble-row:hover .msg-actions,
+  .msg-actions:hover {
     opacity: 1;
     pointer-events: all;
   }
