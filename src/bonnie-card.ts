@@ -173,9 +173,7 @@ export class BonnieCard extends LitElement {
   @state() private showKbHelp = false
   // Feature 5: voice input
   @state() private isListening = false
-  @state() private hasSpeechRecognition =
-    (!!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition)
-    && (typeof window !== 'undefined' && window.isSecureContext)
+  @state() private hasSpeechRecognition = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
   // TTS: speak assistant bubbles
   @state() private hasSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window
   @state() private speakingBubbleId: string | null = null
@@ -3380,19 +3378,14 @@ export class BonnieCard extends LitElement {
                     @input=${this._onInput}
                     @keydown=${this._onKeydown}
                   ></textarea>
-                  <!-- Feature 5: Voice mic button (dictation — speech to text).
-                       Only render when the browser actually supports it in
-                       this context (HTTPS/secure); otherwise the button would
-                       always fail with a "not available" error. -->
-                  ${this.hasSpeechRecognition ? html`
-                    <button
-                      class=${classMap({ 'mic-btn': true, listening: this.isListening })}
-                      aria-label=${t('voice')}
-                      @click=${() => this._toggleVoice()}
-                      title=${this.isListening ? 'Stop dictation' : 'Dictate (speech → text)'}
-                      ?disabled=${isStreaming}
-                    >${svgMic()}</button>
-                  ` : nothing}
+                  <!-- Feature 5: Voice mic button (dictation — speech to text) -->
+                  <button
+                    class=${classMap({ 'mic-btn': true, listening: this.isListening })}
+                    aria-label=${t('voice')}
+                    @click=${() => this._toggleVoice()}
+                    title=${this.isListening ? 'Stop dictation' : 'Dictate (speech → text)'}
+                    ?disabled=${isStreaming}
+                  >${svgMic()}</button>
                   <button
                     class=${classMap({ 'send-btn': true, stop: isStreaming })}
                     aria-label=${isStreaming ? t('stop') : t('send')}
