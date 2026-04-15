@@ -1084,6 +1084,15 @@ export const cardStyles = css`
     word-break: break-word;
     overflow-wrap: anywhere;
     position: relative;
+    /* Allow text selection inside bubbles — parent HA/kiosk may disable globally */
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+    cursor: text;
+  }
+  .bubble * {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   .bubble.user {
