@@ -1025,6 +1025,14 @@ export const cardStyles = css`
     pointer-events: all;
   }
 
+  /* Touch screens have no hover — always show actions */
+  @media (pointer: coarse) {
+    .msg-actions {
+      opacity: 1;
+      pointer-events: all;
+    }
+  }
+
   .msg-action-btn {
     background: none;
     border: none;
