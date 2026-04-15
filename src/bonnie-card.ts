@@ -174,6 +174,12 @@ export class BonnieCard extends LitElement {
   // Feature 5: voice input
   @state() private isListening = false
   @state() private hasSpeechRecognition = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
+  // TTS: speak assistant bubbles
+  @state() private hasSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window
+  @state() private speakingBubbleId: string | null = null
+  @state() private ttsAutoSpeak = localStorage.getItem('bonnie-tts-auto') === '1'
+  @state() private ttsVoiceName = localStorage.getItem('bonnie-tts-voice') || ''
+  @state() private ttsVoices: SpeechSynthesisVoice[] = []
   // Feature 6: export menu
   @state() private showExportMenu = false
   // Feature 10: theme toggle (auto / dark / light)
@@ -320,6 +326,7 @@ export class BonnieCard extends LitElement {
     this._topSentinelObserver?.disconnect()
     document.removeEventListener('keydown', this._onGlobalKeydown)
     this._stopListening()
+    this._stopSpeaking()
     if (this._toastTimer) { clearTimeout(this._toastTimer); this._toastTimer = null }
     if (this._searchDebounceTimer) { clearTimeout(this._searchDebounceTimer); this._searchDebounceTimer = null }
     // Remove paste listener attached in _setupPasteListener
@@ -404,6 +411,7 @@ export class BonnieCard extends LitElement {
       await this._loadSessions()
       // Feature 2: Request browser notification permission for proactive alerts
       this._requestNotificationPermission()
+      this._loadTtsVoices()
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         this.authError = true
@@ -1425,6 +1433,11 @@ export class BonnieCard extends LitElement {
     if (this.bubbles.length > 50) {
       this.visibleEnd = this.bubbles.length
     }
+    // Auto-speak last assistant bubble if enabled
+    if (this.ttsAutoSpeak && this.hasSpeechSynthesis) {
+      const lastAst = [...this.bubbles].reverse().find((b) => b.role === 'assistant' && b.text)
+      if (lastAst) this._speak(lastAst.id, lastAst.text!)
+    }
     void this._loadSessions()
   }
 
@@ -1610,6 +1623,73 @@ export class BonnieCard extends LitElement {
       this._speechRecognition = null
     }
     this.isListening = false
+  }
+
+  // ── TTS (Web Speech Synthesis) ───────────────────────────────────────────
+
+  private _loadTtsVoices(): void {
+    if (!this.hasSpeechSynthesis) return
+    const update = () => { this.ttsVoices = window.speechSynthesis.getVoices() }
+    update()
+    // Chrome loads voices async
+    window.speechSynthesis.onvoiceschanged = update
+  }
+
+  private _stripMarkdown(text: string): string {
+    // Remove code blocks entirely (don't speak code)
+    let out = text.replace(/```[\s\S]*?```/g, ' code block ')
+    // Remove inline code
+    out = out.replace(/`[^`]*`/g, '')
+    // Remove markdown syntax
+    out = out.replace(/\*\*([^*]+)\*\*/g, '$1')
+    out = out.replace(/\*([^*]+)\*/g, '$1')
+    out = out.replace(/~~([^~]+)~~/g, '$1')
+    out = out.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    out = out.replace(/#+\s*/g, '')
+    out = out.replace(/<[^>]+>/g, '')
+    return out.trim()
+  }
+
+  private _speak(bubbleId: string, text: string): void {
+    if (!this.hasSpeechSynthesis) return
+    window.speechSynthesis.cancel()
+    const clean = this._stripMarkdown(text)
+    if (!clean) return
+    const utter = new SpeechSynthesisUtterance(clean)
+    if (this.ttsVoiceName) {
+      const v = this.ttsVoices.find((vv) => vv.name === this.ttsVoiceName)
+      if (v) utter.voice = v
+    }
+    utter.rate = 1
+    utter.pitch = 1
+    utter.onstart = () => { this.speakingBubbleId = bubbleId }
+    utter.onend = () => { if (this.speakingBubbleId === bubbleId) this.speakingBubbleId = null }
+    utter.onerror = () => { if (this.speakingBubbleId === bubbleId) this.speakingBubbleId = null }
+    window.speechSynthesis.speak(utter)
+  }
+
+  private _stopSpeaking(): void {
+    if (!this.hasSpeechSynthesis) return
+    window.speechSynthesis.cancel()
+    this.speakingBubbleId = null
+  }
+
+  private _toggleSpeak(bubbleId: string, text: string): void {
+    if (this.speakingBubbleId === bubbleId) {
+      this._stopSpeaking()
+    } else {
+      this._speak(bubbleId, text)
+    }
+  }
+
+  private _setAutoSpeak(enabled: boolean): void {
+    this.ttsAutoSpeak = enabled
+    localStorage.setItem('bonnie-tts-auto', enabled ? '1' : '0')
+  }
+
+  private _setTtsVoice(name: string): void {
+    this.ttsVoiceName = name
+    localStorage.setItem('bonnie-tts-voice', name)
   }
 
   // Feature 6: Export conversation
@@ -2108,6 +2188,17 @@ export class BonnieCard extends LitElement {
               <span>Edit</span>
             </button>
           ` : nothing}
+          ${!isUser && this.hasSpeechSynthesis && b.text ? html`
+            <button
+              class=${classMap({ 'msg-action-btn': true, speaking: this.speakingBubbleId === b.id })}
+              aria-label=${this.speakingBubbleId === b.id ? 'Stop speaking' : 'Speak message'}
+              @click=${() => this._toggleSpeak(b.id, b.text ?? '')}
+              title=${this.speakingBubbleId === b.id ? 'Stop' : 'Speak'}
+            >
+              ${this.speakingBubbleId === b.id ? svgVolumeOff() : svgVolume()}
+              <span>${this.speakingBubbleId === b.id ? 'Stop' : 'Speak'}</span>
+            </button>
+          ` : nothing}
           ${isLastAssistant ? html`
             <button
               class="msg-action-btn"
@@ -2539,6 +2630,26 @@ export class BonnieCard extends LitElement {
                         }}
                       />
                     </div>
+                    ${this.hasSpeechSynthesis ? html`
+                      <div class="settings-field">
+                        <label class="settings-label">
+                          <input type="checkbox" .checked=${this.ttsAutoSpeak}
+                            @change=${(e: Event) => this._setAutoSpeak((e.target as HTMLInputElement).checked)}
+                          />
+                          Auto-speak assistant responses
+                        </label>
+                      </div>
+                      <div class="settings-field">
+                        <label class="settings-label">Voice</label>
+                        <select class="sys-prompt-input" .value=${this.ttsVoiceName}
+                          @change=${(e: Event) => this._setTtsVoice((e.target as HTMLSelectElement).value)}>
+                          <option value="">Default (browser)</option>
+                          ${this.ttsVoices.map((v) => html`
+                            <option value=${v.name} ?selected=${this.ttsVoiceName === v.name}>${v.name} (${v.lang})</option>
+                          `)}
+                        </select>
+                      </div>
+                    ` : nothing}
                     ${this.settingsSaving ? html`<div style="font-size:0.8rem;color:var(--bonnie-accent)">Saving...</div>` : nothing}
                   </div>
                 `}
@@ -3479,6 +3590,14 @@ function svgMemory(): TemplateResult {
 }
 
 /** Puzzle / plugin icon (Feature 12) */
+function svgVolume(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
+}
+
+function svgVolumeOff(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`
+}
+
 function svgGear(): TemplateResult {
   return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
 }

@@ -1050,6 +1050,13 @@ export const cardStyles = css`
     color: #3fb950;
   }
 
+  .msg-action-btn.speaking {
+    color: var(--bonnie-accent);
+  }
+  .msg-action-btn.speaking svg {
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+
   .msg-action-btn svg {
     width: 12px;
     height: 12px;
