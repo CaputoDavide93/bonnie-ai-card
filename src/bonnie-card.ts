@@ -183,7 +183,6 @@ export class BonnieCard extends LitElement {
   // Feature 6: export menu
   @state() private showExportMenu = false
   // Feature 10: theme toggle (auto / dark / light)
-  @state() private themeMode: 'auto' | 'dark' | 'light' = 'auto'
   // Permission requests
   @state() private activePermissionRequest: { turnId: string; toolName: string; toolDescription?: string } | null = null
 
@@ -299,13 +298,8 @@ export class BonnieCard extends LitElement {
       const saved = localStorage.getItem(LS_SIDEBAR_KEY)
       if (saved !== null) this.sidebarOpen = saved === 'true'
     } catch {}
-    // Restore theme preference
-    try {
-      const savedTheme = localStorage.getItem('bonnie-theme') as 'auto' | 'dark' | 'light' | null
-      if (savedTheme && ['auto', 'dark', 'light'].includes(savedTheme)) {
-        this.themeMode = savedTheme
-      }
-    } catch {}
+    // Theme: always follow HA dashboard theme (no override)
+    try { localStorage.removeItem('bonnie-theme') } catch {}
     // Bootstrap only if config is already set (HA sets it before connecting;
     // in the test harness setConfig is called after — setConfig will trigger it)
     if (this.config) {
@@ -376,12 +370,6 @@ export class BonnieCard extends LitElement {
     }
     if (changed.has('sessions') || changed.has('searchQuery')) {
       this._filterSessions()
-    }
-    if (changed.has('themeMode')) {
-      try {
-        localStorage.setItem('bonnie-theme', this.themeMode)
-      } catch {}
-      this._applyTheme()
     }
     // Feature T4-3: re-attach sentinel observer when visible range or bubbles change
     if (changed.has('visibleStart') || changed.has('bubbles')) {
@@ -695,25 +683,6 @@ export class BonnieCard extends LitElement {
         (s.title || '').toLowerCase().includes(q)
       )
     }
-  }
-
-  // ── Theme ─────────────────────────────────────────────────────────────────
-
-  private _applyTheme(): void {
-    const host = this.shadowRoot?.host as HTMLElement | null
-    if (!host) return
-    if (this.themeMode === 'dark') {
-      host.setAttribute('data-theme', 'dark')
-    } else if (this.themeMode === 'light') {
-      host.setAttribute('data-theme', 'light')
-    } else {
-      host.removeAttribute('data-theme')
-    }
-  }
-
-  private _cycleTheme(): void {
-    const next: Record<string, 'auto' | 'dark' | 'light'> = { auto: 'dark', dark: 'light', light: 'auto' }
-    this.themeMode = next[this.themeMode]
   }
 
   // ── Session actions ───────────────────────────────────────────────────────
@@ -3004,13 +2973,6 @@ export class BonnieCard extends LitElement {
               </div>
             </div>
             ${isStreaming ? html`<div class="status-dot streaming" title="Streaming"></div>` : nothing}
-            <!-- Feature 10: Theme toggle -->
-            <button
-              class="icon-btn"
-              aria-label="Toggle theme"
-              title="Theme: ${this.themeMode}"
-              @click=${() => this._cycleTheme()}
-            >${this.themeMode === 'light' ? svgSun() : this.themeMode === 'dark' ? svgMoon() : svgSunMoon()}</button>
             <!-- Feature 10 (this sprint): Model selector -->
             ${this.allowedModels.length > 1 ? html`
               <select
@@ -3562,18 +3524,6 @@ function svgDots(): TemplateResult {
 
 function svgDownload(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
-}
-
-function svgSun(): TemplateResult {
-  return html`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
-}
-
-function svgMoon(): TemplateResult {
-  return html`<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
-}
-
-function svgSunMoon(): TemplateResult {
-  return html`<svg viewBox="0 0 24 24"><path d="M12 8a2.83 2.83 0 0 0 4 4 4 4 0 1 1-4-4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/></svg>`
 }
 
 function svgKey(): TemplateResult {

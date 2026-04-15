@@ -18,7 +18,7 @@ export const cardStyles = css`
     --bonnie-ink-3: var(--disabled-text-color, #586069);
 
     /* ── Surfaces: honour HA card background ────────────────── */
-    --bonnie-surface-0: var(--ha-card-background, var(--card-background-color, #0D1117));
+    --bonnie-surface-0: var(--primary-background-color, var(--ha-card-background, var(--card-background-color, #0D1117)));
     --bonnie-surface-1: color-mix(in srgb, var(--bonnie-surface-0) 80%, white 5%);
     --bonnie-surface-2: color-mix(in srgb, var(--bonnie-surface-0) 65%, white 10%);
     --bonnie-surface-3: color-mix(in srgb, var(--bonnie-surface-0) 50%, white 15%);
@@ -2160,65 +2160,7 @@ export const cardStyles = css`
     margin: 0.5em 0;
   }
 
-  /* ── Feature 10: Light mode (system preference) ────────── */
-  @media (prefers-color-scheme: light) {
-    :host(:not([data-theme="dark"])) {
-      --bonnie-ink-0: #0F172A;
-      --bonnie-ink-1: #334155;
-      --bonnie-ink-2: #64748B;
-      --bonnie-ink-3: #94A3B8;
-      --bonnie-surface-0: #FFFFFF;
-      --bonnie-surface-1: #F8FAFC;
-      --bonnie-surface-2: #F1F5F9;
-      --bonnie-surface-3: #E2E8F0;
-      --bonnie-surface-4: #CBD5E1;
-      --bonnie-border: rgba(15, 23, 42, 0.08);
-      --bonnie-border-soft: rgba(15, 23, 42, 0.04);
-      --bonnie-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
-      --bonnie-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
-    }
-  }
-
-  /* Explicit light mode forced via toggle */
-  :host([data-theme="light"]) {
-    --bonnie-ink-0: #0F172A;
-    --bonnie-ink-1: #334155;
-    --bonnie-ink-2: #64748B;
-    --bonnie-ink-3: #94A3B8;
-    --bonnie-surface-0: #FFFFFF;
-    --bonnie-surface-1: #F8FAFC;
-    --bonnie-surface-2: #F1F5F9;
-    --bonnie-surface-3: #E2E8F0;
-    --bonnie-surface-4: #CBD5E1;
-    --bonnie-border: rgba(15, 23, 42, 0.08);
-    --bonnie-border-soft: rgba(15, 23, 42, 0.04);
-    --bonnie-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
-    --bonnie-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
-  }
-
-  /* Explicit dark mode forced via toggle (overrides system light) */
-  :host([data-theme="dark"]) {
-    --bonnie-ink-0: #E6EDF3;
-    --bonnie-ink-1: #C7D1DC;
-    --bonnie-ink-2: #8B949E;
-    --bonnie-ink-3: #586069;
-    --bonnie-surface-0: #0D1117;
-    --bonnie-surface-1: color-mix(in srgb, #0D1117 80%, white 5%);
-    --bonnie-surface-2: color-mix(in srgb, #0D1117 65%, white 10%);
-    --bonnie-surface-3: color-mix(in srgb, #0D1117 50%, white 15%);
-    --bonnie-surface-4: color-mix(in srgb, #0D1117 35%, white 20%);
-    --bonnie-border: rgba(255, 255, 255, 0.08);
-    --bonnie-border-soft: rgba(255, 255, 255, 0.04);
-    --bonnie-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    --bonnie-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  /* Light mode hljs overrides */
-  :host([data-theme="light"]) .hljs-comment,
-  :host([data-theme="light"]) .hljs-quote,
-  :host([data-theme="light"]) .hljs-meta {
-    color: #6B7280;
-  }
+  /* Card inherits HA dashboard theme via CSS vars — no internal overrides. */
 
   /* ── Feature 9: Typing indicator ──────────────────────── */
   .typing-indicator-bubble {
