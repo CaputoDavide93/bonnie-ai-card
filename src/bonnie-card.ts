@@ -1644,6 +1644,11 @@ export class BonnieCard extends LitElement {
   }
 
   private _toggleSpeak(bubbleId: string, text: string): void {
+    if (!this.hasSpeechSynthesis) {
+      this.errorMessage = 'Text-to-speech not available in this browser.'
+      setTimeout(() => { this.errorMessage = null }, 4000)
+      return
+    }
     if (this.speakingBubbleId === bubbleId) {
       this._stopSpeaking()
     } else {
@@ -2184,7 +2189,7 @@ export class BonnieCard extends LitElement {
               <span>Edit</span>
             </button>
           ` : nothing}
-          ${!isUser && this.hasSpeechSynthesis && b.text ? html`
+          ${!isUser && b.text ? html`
             <button
               class=${classMap({ 'msg-action-btn': true, speaking: this.speakingBubbleId === b.id })}
               aria-label=${this.speakingBubbleId === b.id ? 'Stop speaking' : 'Speak message'}
