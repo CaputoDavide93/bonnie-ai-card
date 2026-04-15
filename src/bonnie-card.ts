@@ -1912,13 +1912,40 @@ export class BonnieCard extends LitElement {
 
   private async _copyMessage(id: string, text: string, e: Event): Promise<void> {
     e.stopPropagation()
+    let ok = false
     try {
-      await navigator.clipboard.writeText(text)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text)
+        ok = true
+      }
+    } catch {}
+    if (!ok) {
+      // Fallback for HTTP / insecure context (HA over http://)
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.setAttribute('readonly', '')
+        ta.style.position = 'fixed'
+        ta.style.top = '0'
+        ta.style.left = '0'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        ta.setSelectionRange(0, text.length)
+        ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch {}
+    }
+    if (ok) {
       this.copiedMsgId = id
       setTimeout(() => {
         if (this.copiedMsgId === id) this.copiedMsgId = null
       }, 2000)
-    } catch {}
+    } else {
+      this.errorMessage = 'Copy blocked by browser (HA not on HTTPS). Long-press the text to select.'
+      setTimeout(() => { this.errorMessage = null }, 4000)
+    }
   }
 
   // ── Error handling ────────────────────────────────────────────────────────
