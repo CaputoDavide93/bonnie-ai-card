@@ -1893,39 +1893,40 @@ export const cardStyles = css`
   }
   .permission-approve-btn:hover { background: rgba(255, 193, 7, 0.28); }
 
-  /* ── Feature 5: Voice mic button ──────────────────────── */
+  /* ── Feature 5: Voice mic button (matches send-btn size) ── */
   .mic-btn {
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--bonnie-surface-2);
+    border: 1px solid var(--bonnie-border);
     cursor: pointer;
-    color: var(--bonnie-ink-3);
+    color: var(--bonnie-ink-1);
     padding: 0;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
     transition: all 0.15s;
   }
   .mic-btn:hover {
     background: var(--bonnie-surface-3);
-    color: var(--bonnie-ink-1);
+    color: var(--bonnie-ink-0);
+    transform: translateY(-1px);
   }
   .mic-btn.listening {
     color: #E06C75;
-    background: rgba(224, 108, 117, 0.12);
-    border-color: rgba(224, 108, 117, 0.3);
+    background: rgba(224, 108, 117, 0.14);
+    border-color: rgba(224, 108, 117, 0.4);
     animation: mic-pulse 1.4s ease-in-out infinite;
   }
-  .mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .mic-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   .mic-btn svg {
-    width: 14px;
-    height: 14px;
+    width: 15px;
+    height: 15px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2;
+    stroke-width: 2.2;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
