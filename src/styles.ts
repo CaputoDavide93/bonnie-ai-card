@@ -2897,4 +2897,45 @@ export const cardStyles = css`
     background: var(--bonnie-accent);
     color: var(--bonnie-on-accent);
   }
+
+  /* ── Proactive Rules panel ─────────────────────────────────────────────── */
+  .rule-condition-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--bonnie-surface-3);
+    color: var(--bonnie-ink-1);
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
+
+  /* ── Notification Center ───────────────────────────────────────────────── */
+  .notification-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .notification-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .notification-text {
+    font-size: 13px;
+    color: var(--bonnie-ink-1);
+    line-height: 1.5;
+    word-break: break-word;
+  }
+
+  .notification-time {
+    font-size: 11px;
+    color: var(--bonnie-ink-2);
+    flex-shrink: 0;
+  }
 `

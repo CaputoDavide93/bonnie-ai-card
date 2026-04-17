@@ -17,7 +17,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
 
 import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult, Plugin } from './types.js'
-import type { AuditStats, AuditDailyEntry, Memory, PluginCreate, UserSettings, UserView, RoleView } from './api.js'
+import type { AuditStats, AuditDailyEntry, Memory, PluginCreate, UserSettings, UserView, RoleView, ProactiveRule } from './api.js'
 import {
   ApiError,
   kioskExchange,
@@ -55,6 +55,10 @@ import {
   deleteUser,
   changePassword,
   listRoles,
+  listProactiveRules,
+  createProactiveRule,
+  updateProactiveRule,
+  deleteProactiveRule,
 } from './api.js'
 import { renderMarkdown, clearMarkdownCache } from './markdown.js'
 import { cardStyles } from './styles.js'
@@ -273,6 +277,24 @@ export class BonnieCard extends LitElement {
   @state() private userFormSaving = false
   @state() private userPasswordEditId: string | null = null
   @state() private userPasswordDraft = ''
+
+  // Proactive Rules panel (admin only)
+  @state() private showRules = false
+  @state() private proactiveRules: ProactiveRule[] = []
+  @state() private rulesLoading = false
+  @state() private ruleAddMode = false
+  @state() private ruleFormName = ''
+  @state() private ruleFormEntityId = ''
+  @state() private ruleFormCondition = 'above'
+  @state() private ruleFormThreshold = ''
+  @state() private ruleFormMessageTemplate = ''
+  @state() private ruleFormError = ''
+  @state() private ruleFormSaving = false
+
+  // Notification Center (all users)
+  @state() private showNotifications = false
+  @state() private notifications: Array<{ text: string; time: string }> = []
+  @state() private notificationsLoading = false
 
   private _fileInput: HTMLInputElement | null = null
 
@@ -666,6 +688,123 @@ export class BonnieCard extends LitElement {
     } catch {
       this._showToast('Failed to update password')
     }
+  }
+
+  // ── Proactive Rules panel (admin only) ──────────────────────────────────
+
+  private async _openRules(): Promise<void> {
+    this.showRules = true
+    this.rulesLoading = true
+    this.ruleAddMode = false
+    this.ruleFormError = ''
+    try {
+      this.proactiveRules = await listProactiveRules(this.config.backend_url, this.sessionToken!)
+    } catch {
+      this.proactiveRules = []
+    } finally {
+      this.rulesLoading = false
+    }
+  }
+
+  private _closeRules(): void {
+    this.showRules = false
+    this.ruleAddMode = false
+    this.ruleFormError = ''
+  }
+
+  private async _toggleRuleEnabled(rule: ProactiveRule): Promise<void> {
+    if (!this.sessionToken) return
+    try {
+      const updated = await updateProactiveRule(this.config.backend_url, this.sessionToken, rule.id, { enabled: !rule.enabled })
+      this.proactiveRules = this.proactiveRules.map((r) => r.id === rule.id ? updated : r)
+    } catch {
+      // best-effort
+    }
+  }
+
+  private async _deleteRule(ruleId: string): Promise<void> {
+    if (!this.sessionToken) return
+    try {
+      await deleteProactiveRule(this.config.backend_url, this.sessionToken, ruleId)
+      this.proactiveRules = this.proactiveRules.filter((r) => r.id !== ruleId)
+    } catch {
+      // best-effort
+    }
+  }
+
+  private async _saveNewRule(): Promise<void> {
+    if (!this.sessionToken) return
+    this.ruleFormError = ''
+    if (!this.ruleFormName.trim() || !this.ruleFormEntityId.trim()) {
+      this.ruleFormError = 'Name and entity ID are required.'
+      return
+    }
+    this.ruleFormSaving = true
+    try {
+      const created = await createProactiveRule(this.config.backend_url, this.sessionToken, {
+        name: this.ruleFormName.trim(),
+        entity_id: this.ruleFormEntityId.trim(),
+        condition: this.ruleFormCondition,
+        threshold: this.ruleFormThreshold,
+        message_template: this.ruleFormMessageTemplate,
+        enabled: true,
+        created_at: 0,
+        updated_at: 0,
+      })
+      this.proactiveRules = [...this.proactiveRules, created]
+      this.ruleAddMode = false
+      this.ruleFormName = ''
+      this.ruleFormEntityId = ''
+      this.ruleFormCondition = 'above'
+      this.ruleFormThreshold = ''
+      this.ruleFormMessageTemplate = ''
+    } catch (err) {
+      this.ruleFormError = err instanceof Error ? err.message : 'Failed to save rule.'
+    } finally {
+      this.ruleFormSaving = false
+    }
+  }
+
+  // ── Notification Center (all users) ───────────────────────────────────────
+
+  private async _openNotifications(): Promise<void> {
+    this.showNotifications = true
+    this.notificationsLoading = true
+    try {
+      // Find the pinned "Home Assistant" conversation
+      const allSessions = this.sessions.length > 0 ? this.sessions : await listSessions(this.config.backend_url, this.sessionToken!)
+      const haSession = allSessions.find((s) => s.title === 'Home Assistant' && s.pinned)
+      if (!haSession) {
+        this.notifications = []
+        return
+      }
+      const detail = await getSession(this.config.backend_url, this.sessionToken!, haSession.id)
+      // Extract assistant responses from the last 20 turns
+      const entries: Array<{ text: string; time: string }> = []
+      for (const turn of detail.turns.slice(-40)) {
+        // Each turn has events array; look for assistant text events
+        const assistantTexts: string[] = []
+        for (const evt of (turn.events || [])) {
+          if (evt.type === 'assistant' && typeof evt.message === 'string') {
+            assistantTexts.push(evt.message)
+          }
+        }
+        if (assistantTexts.length > 0) {
+          const text = assistantTexts.join(' ').slice(0, 500)
+          const time = turn.created_at ? new Date(turn.created_at * 1000).toISOString() : ''
+          entries.push({ text, time })
+        }
+      }
+      this.notifications = entries.slice(-20).reverse()
+    } catch {
+      this.notifications = []
+    } finally {
+      this.notificationsLoading = false
+    }
+  }
+
+  private _closeNotifications(): void {
+    this.showNotifications = false
   }
 
   // ── Feature 14: Offline banner ────────────────────────────────────────────
@@ -3017,6 +3156,116 @@ export class BonnieCard extends LitElement {
             </div>
           ` : nothing}
 
+          <!-- Proactive Rules overlay (admin only) -->
+          ${this.showRules ? html`
+            <div class="analytics-overlay" @click=${() => this._closeRules()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgBell()} Proactive Rules (${this.proactiveRules.length})</span>
+                  <div style="display:flex;gap:4px;align-items:center">
+                    <button class="icon-btn" title="Add rule" @click=${() => { this.ruleAddMode = !this.ruleAddMode; this.ruleFormError = '' }}>${svgPlus()}</button>
+                    <button class="icon-btn" @click=${() => this._closeRules()}>${svgClose()}</button>
+                  </div>
+                </div>
+                ${this.ruleAddMode ? html`
+                  <div style="padding:8px 12px;border-bottom:1px solid var(--bonnie-border);display:flex;flex-direction:column;gap:6px">
+                    <input class="sys-prompt-input" placeholder="Rule name" .value=${this.ruleFormName}
+                      @input=${(e: Event) => { this.ruleFormName = (e.target as HTMLInputElement).value }} />
+                    <input class="sys-prompt-input" placeholder="Entity ID (e.g. sensor.temperature)" .value=${this.ruleFormEntityId}
+                      @input=${(e: Event) => { this.ruleFormEntityId = (e.target as HTMLInputElement).value }} />
+                    <div style="display:flex;gap:6px">
+                      <select class="sys-prompt-input" style="flex:1" .value=${this.ruleFormCondition}
+                        @change=${(e: Event) => { this.ruleFormCondition = (e.target as HTMLSelectElement).value }}>
+                        <option value="above">Above</option>
+                        <option value="below">Below</option>
+                        <option value="equals">Equals</option>
+                        <option value="state_is">State is</option>
+                      </select>
+                      <input class="sys-prompt-input" style="flex:1" placeholder="Threshold / value" .value=${this.ruleFormThreshold}
+                        @input=${(e: Event) => { this.ruleFormThreshold = (e.target as HTMLInputElement).value }} />
+                    </div>
+                    <input class="sys-prompt-input" placeholder="Message template (optional)" .value=${this.ruleFormMessageTemplate}
+                      @input=${(e: Event) => { this.ruleFormMessageTemplate = (e.target as HTMLInputElement).value }}
+                      @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') void this._saveNewRule() }} />
+                    ${this.ruleFormError ? html`
+                      <div style="color:var(--error-color,#F85149);font-size:0.78rem">${this.ruleFormError}</div>
+                    ` : nothing}
+                    <div style="display:flex;gap:6px;justify-content:flex-end">
+                      <button class="system-prompt-cancel-btn" @click=${() => { this.ruleAddMode = false; this.ruleFormError = '' }}>Cancel</button>
+                      <button class="system-prompt-save-btn" ?disabled=${this.ruleFormSaving} @click=${() => void this._saveNewRule()}>
+                        ${this.ruleFormSaving ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ` : nothing}
+                ${this.rulesLoading ? html`
+                  <div class="analytics-loading"><div class="loading-spinner"></div></div>
+                ` : this.proactiveRules.length === 0 && !this.ruleAddMode ? html`
+                  <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--bonnie-ink-2)">
+                    No proactive rules yet. Click + to create one.
+                  </div>
+                ` : html`
+                  <div class="memories-list">
+                    ${this.proactiveRules.map((r) => html`
+                      <div class="memory-item" style="flex-direction:column;align-items:flex-start;gap:4px">
+                        <div style="display:flex;align-items:center;gap:0.5rem;width:100%">
+                          <span class="memory-key" style="flex:1">${r.name}</span>
+                          <span class="rule-condition-badge">${r.condition} ${r.threshold}</span>
+                          <button
+                            class="icon-btn"
+                            title="${r.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}"
+                            style="color:${r.enabled ? 'var(--bonnie-accent)' : 'var(--bonnie-ink-2)'}"
+                            @click=${() => void this._toggleRuleEnabled(r)}
+                          >${r.enabled ? svgCheck() : svgClose()}</button>
+                          <button
+                            class="icon-btn memory-delete-btn"
+                            aria-label="Delete rule"
+                            title="Delete rule"
+                            @click=${() => void this._deleteRule(r.id)}
+                          >${svgTrash()}</button>
+                        </div>
+                        <span class="memory-value" style="font-size:0.78rem;color:var(--bonnie-ink-2)">${r.entity_id}</span>
+                        ${r.message_template ? html`
+                          <span style="font-size:0.7rem;color:var(--bonnie-ink-2);word-break:break-all;font-style:italic">${r.message_template}</span>
+                        ` : nothing}
+                      </div>
+                    `)}
+                  </div>
+                `}
+              </div>
+            </div>
+          ` : nothing}
+
+          <!-- Notification Center overlay (all users) -->
+          ${this.showNotifications ? html`
+            <div class="analytics-overlay" @click=${() => this._closeNotifications()}>
+              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="analytics-header">
+                  <span class="analytics-title">${svgBell()} Notifications</span>
+                  <button class="icon-btn" @click=${() => this._closeNotifications()}>${svgClose()}</button>
+                </div>
+                ${this.notificationsLoading ? html`
+                  <div class="analytics-loading"><div class="loading-spinner"></div></div>
+                ` : this.notifications.length === 0 ? html`
+                  <div class="analytics-empty" style="padding:1.5rem;text-align:center;color:var(--bonnie-ink-2)">
+                    No recent notifications.
+                  </div>
+                ` : html`
+                  <div class="memories-list" style="max-height:420px">
+                    ${this.notifications.map((n) => html`
+                      <div class="memory-item notification-item">
+                        <div class="notification-content">
+                          <span class="notification-text">${n.text}</span>
+                          <span class="notification-time">${n.time ? relativeTime(n.time) : ''}</span>
+                        </div>
+                      </div>
+                    `)}
+                  </div>
+                `}
+              </div>
+            </div>
+          ` : nothing}
+
           <!-- Header -->
           <div class="header">
             ${!this.isWide
@@ -3135,6 +3384,15 @@ export class BonnieCard extends LitElement {
                 </div>
               </div>
             </div>
+            <!-- Notification Center button (all users) -->
+            ${this.sessionToken ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showNotifications })}
+                aria-label="Notifications"
+                title="Notification center"
+                @click=${() => this.showNotifications ? this._closeNotifications() : void this._openNotifications()}
+              >${svgBell()}</button>
+            ` : nothing}
             <!-- Settings button -->
             ${this.sessionToken ? html`
               <button
@@ -3179,6 +3437,15 @@ export class BonnieCard extends LitElement {
                 title="User management (admin)"
                 @click=${() => this.showUsers ? this._closeUsers() : void this._openUsers()}
               >${svgUsers()}</button>
+            ` : nothing}
+            <!-- Proactive Rules button (admin only) -->
+            ${this.isAdmin ? html`
+              <button
+                class=${classMap({ 'icon-btn': true, 'icon-btn--active': this.showRules })}
+                aria-label="Rules"
+                title="Proactive rules (admin)"
+                @click=${() => this.showRules ? this._closeRules() : void this._openRules()}
+              >${svgBell()}</button>
             ` : nothing}
             ${this.isWide
               ? html`<button class="icon-btn" aria-label=${t('newConversation')} @click=${this._newSession} title="${t('newConversation')} (Cmd+N)">
@@ -3618,6 +3885,11 @@ function svgPuzzle(): TemplateResult {
 /** Users icon (Feather) */
 function svgUsers(): TemplateResult {
   return html`<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
+}
+
+/** Bell icon (Feather) — used for proactive rules + notification center */
+function svgBell(): TemplateResult {
+  return html`<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`
 }
 
 /** Return a simple SVG icon for a template id/name string. */

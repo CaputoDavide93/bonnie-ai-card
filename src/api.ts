@@ -495,6 +495,8 @@ export interface ProactiveRule {
   threshold: string
   message_template: string
   enabled: boolean
+  created_at: number
+  updated_at: number
 }
 
 export async function listProactiveRules(baseUrl: string, token: string): Promise<ProactiveRule[]> {
