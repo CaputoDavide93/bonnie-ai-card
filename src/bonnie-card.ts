@@ -1245,7 +1245,7 @@ export class BonnieCard extends LitElement {
       url = streamUrl(this.config.backend_url, this.sessionToken!, turnId)
     }
     // Guard: if user navigated away during the await, abort
-    if (gen !== this._streamGeneration) return
+    if (gen !== this._streamGeneration) { this.streamingTurnId = null; return }
     const es = new EventSource(url)
     this._eventSource = es
 
@@ -1643,8 +1643,8 @@ export class BonnieCard extends LitElement {
 
   private _stopSpeaking(): void {
     if (!this.hasSpeechSynthesis) return
-    window.speechSynthesis.cancel()
     this.speakingBubbleId = null
+    window.speechSynthesis.cancel()
   }
 
   private _toggleSpeak(bubbleId: string, text: string): void {
@@ -1709,11 +1709,36 @@ export class BonnieCard extends LitElement {
         if (b.toolResult !== undefined) lines.push('**Result:**', '```', String(b.toolResult).slice(0, 2000), '```', '')
       }
     }
+    const fullText = lines.join('\n')
+    let ok = false
     try {
-      await navigator.clipboard.writeText(lines.join('\n'))
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(fullText)
+        ok = true
+      }
+    } catch {}
+    if (!ok) {
+      // Fallback for HTTP / insecure context (HA over http://)
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = fullText
+        ta.setAttribute('readonly', '')
+        ta.style.position = 'fixed'
+        ta.style.top = '0'
+        ta.style.left = '0'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        ta.setSelectionRange(0, fullText.length)
+        ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch {}
+    }
+    if (ok) {
       this._showToast('Conversation copied')
-    } catch {
-      this._showToast('Copy failed')
+    } else {
+      this._showToast('Copy failed — try long-press to select text')
     }
   }
 
