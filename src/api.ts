@@ -141,21 +141,17 @@ export async function requestStreamTicket(
   return res.ticket
 }
 
-/** Build SSE URL using a pre-fetched ticket (preferred) or bearer fallback.
+/** Build SSE URL from a short-lived single-use stream ticket.
  *
- * Security note: the `bearer` fallback puts the long-lived session token in
- * the query string, which means it can appear in server access logs and
- * browser history. This path only exists for EventSource compatibility on
- * backends that don't yet support the /stream-ticket endpoint. Always prefer
- * the ticket path (useTicket=true) in production.
+ * The bearer-fallback path was removed: putting a 30-day session token in
+ * the query string leaks it into HA reverse-proxy access logs, browser
+ * history and any HAR exports. Callers must obtain a ticket via
+ * ``requestStreamTicket`` first; if that fails the SSE connection fails
+ * closed rather than silently downgrading.
  */
-export function streamUrl(baseUrl: string, ticketOrToken: string, turnId: string, useTicket = false): string {
+export function streamUrl(baseUrl: string, ticket: string, turnId: string): string {
   const url = new URL(`${baseUrl}/api/stream/${turnId}`)
-  if (useTicket) {
-    url.searchParams.set('ticket', ticketOrToken)
-  } else {
-    url.searchParams.set('bearer', ticketOrToken)
-  }
+  url.searchParams.set('ticket', ticket)
   return url.toString()
 }
 

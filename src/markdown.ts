@@ -1,4 +1,5 @@
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/core'
 
 // Tree-shakeable language imports — only ship what we need
@@ -259,24 +260,34 @@ renderer.link = function(href: string, title: string | null, text: string): stri
 
 marked.use({ renderer })
 
-// Robust HTML sanitizer — strips all event handlers, dangerous elements, and
-// javascript: URIs that marked v12's default renderer lets through. This
-// replaces the previous stripScripts() which only caught <script> tags.
+// Whitelist HTML sanitiser. LLM output is *attacker-tainted* (prompt
+// injection from web tools, RAG, or memory) so we treat it like any
+// untrusted markup: pass through DOMPurify with an explicit tag/attribute
+// allowlist. The previous regex-based blacklist missed many vectors
+// (SVG <animate onbegin>, <math>, formaction, srcdoc, malformed nesting,
+// CSS expressions, data:image/svg+xml etc.).
+const _ALLOWED_TAGS = [
+  'a', 'abbr', 'b', 'blockquote', 'br', 'caption', 'code', 'div', 'em',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'kbd', 'li',
+  'ol', 'p', 'pre', 'span', 'strong', 'sub', 'sup', 'table', 'tbody',
+  'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+]
+const _ALLOWED_ATTRS = [
+  'alt', 'class', 'href', 'lang', 'loading', 'rel', 'src', 'target',
+  'title',
+]
+
 function sanitize(html: string): string {
-  // 1. Strip dangerous tags entirely (including content)
-  let out = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<script[^>]*>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<iframe[^>]*>/gi, '')
-    .replace(/<object[\s\S]*?<\/object>/gi, '')
-    .replace(/<embed[^>]*>/gi, '')
-    .replace(/<base[^>]*>/gi, '')
-  // 2. Strip ALL event handler attributes (on*)
-  out = out.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
-  // 3. Strip javascript: in href/src/action attributes
-  out = out.replace(/(href|src|action)\s*=\s*["']\s*javascript:/gi, '$1="')
-  return out
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: _ALLOWED_TAGS,
+    ALLOWED_ATTR: _ALLOWED_ATTRS,
+    // Block any URL scheme other than http/https/data:image/blob/relative.
+    ALLOWED_URI_REGEXP: /^(?:https?:|blob:|data:image\/(?:png|jpe?g|gif|webp);|\/|\.{1,2}\/|#)/i,
+    FORBID_TAGS: ['style', 'svg', 'math', 'iframe', 'object', 'embed', 'base', 'form'],
+    FORBID_ATTR: ['style', 'srcdoc', 'formaction'],
+    KEEP_CONTENT: false,
+    RETURN_TRUSTED_TYPE: false,
+  })
 }
 
 // ── Markdown memoization cache (Feature T4-4) ─────────────────────────────

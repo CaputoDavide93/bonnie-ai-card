@@ -15,6 +15,7 @@ import { LitElement, html, nothing, type TemplateResult } from 'lit'
 import { property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 import { classMap } from 'lit/directives/class-map.js'
+import { repeat } from 'lit/directives/repeat.js'
 
 import type { BonnieCardConfig, Session, Bubble, SseEvent, TurnStats, UploadedAttachment, RawTurn, SearchResult, Plugin } from './types.js'
 import type { AuditStats, AuditDailyEntry, Memory, PluginCreate, UserSettings, UserView, RoleView, ProactiveRule } from './api.js'
@@ -1374,14 +1375,19 @@ export class BonnieCard extends LitElement {
   private async _openStream(turnId: string): Promise<void> {
     this._closeStream()
     const gen = ++this._streamGeneration
-    // Fetch a short-lived ticket so the session token never appears in the SSE URL
+    // Always exchange the session token for a single-use SSE ticket. The
+    // previous bearer-in-querystring fallback leaked the long-lived
+    // session token into HA reverse-proxy access logs, browser history
+    // and any HAR exports. Fail closed if the ticket fetch fails.
     let url: string
     try {
       const ticket = await requestStreamTicket(this.config.backend_url, this.sessionToken!, turnId)
-      url = streamUrl(this.config.backend_url, ticket, turnId, true)
-    } catch {
-      // Fall back to bearer-in-query-param if ticket endpoint is unavailable
-      url = streamUrl(this.config.backend_url, this.sessionToken!, turnId)
+      url = streamUrl(this.config.backend_url, ticket, turnId)
+    } catch (e) {
+      this.streamingTurnId = null
+      this.errorMessage =
+        'Could not open chat stream. The backend rejected the auth ticket — try refreshing.'
+      return
     }
     // Guard: if user navigated away during the await, abort
     if (gen !== this._streamGeneration) { this.streamingTurnId = null; return }
@@ -2649,9 +2655,13 @@ export class BonnieCard extends LitElement {
     const all = this.bubbles
     const n = all.length
     if (n <= BonnieCard.VIRT_THRESHOLD) {
-      // No virtualization needed
+      // No virtualization needed. Use repeat() with a stable key so
+      // streaming-token mutations don't re-evaluate every previous
+      // bubble's template — Lit's default keyed-by-position diff would
+      // otherwise re-run unsafeHTML(renderMarkdown(...)) etc. for every
+      // bubble on every chunk.
       return html`
-        ${all.map((b) => this._renderBubble(b))}
+        ${repeat(all, (b) => b.id, (b) => this._renderBubble(b))}
         ${this._renderTypingIndicator()}
         ${this._renderPermissionCard()}
       `
@@ -2669,7 +2679,7 @@ export class BonnieCard extends LitElement {
     return html`
       ${start > 0 ? html`<div class="virt-top-spacer" style="height:${topSpacerHeight}px"></div>` : nothing}
       <div class="virt-top-sentinel"></div>
-      ${visible.map((b) => this._renderBubble(b))}
+      ${repeat(visible, (b) => b.id, (b) => this._renderBubble(b))}
       ${this._renderTypingIndicator()}
       ${this._renderPermissionCard()}
     `
