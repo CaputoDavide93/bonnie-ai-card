@@ -192,7 +192,13 @@ renderer.code = function(code: string, infostring: string | undefined, _escaped:
     if (language && hljs.getLanguage(language)) {
       highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value
     } else {
-      highlighted = hljs.highlightAuto(code).value
+      // Restrict auto-detect to a small high-signal subset rather than
+      // running against all 16 registered languages on every code block.
+      // hljs's auto-detect cost grows linearly with candidate count and
+      // becomes noticeable on long replies during streaming.
+      highlighted = hljs.highlightAuto(code, [
+        'javascript', 'typescript', 'python', 'bash', 'yaml', 'json',
+      ]).value
     }
   } catch {
     highlighted = code

@@ -307,6 +307,7 @@ export class BonnieCard extends LitElement {
   private _userScrolled = false
   private _lastUserMessageText = ''
   private _speechRecognition: any = null
+  private _ttsVoiceHandler: (() => void) | null = null
   private _turnStartTime: number | null = null
 
   // Auto-title: regex to detect auto-generated session titles
@@ -344,6 +345,17 @@ export class BonnieCard extends LitElement {
     document.removeEventListener('keydown', this._onGlobalKeydown)
     this._stopListening()
     this._stopSpeaking()
+    // Release the global speechSynthesis voice-list handler. We installed
+    // it in _initTtsVoices via `window.speechSynthesis.onvoiceschanged =
+    // update`, which a) clobbers any existing handler on the page and
+    // b) keeps a closure over `this`, leaving the card detached-but-alive
+    // after unmount. Only null it out if we still own the slot.
+    try {
+      if (this._ttsVoiceHandler && window.speechSynthesis.onvoiceschanged === this._ttsVoiceHandler) {
+        window.speechSynthesis.onvoiceschanged = null
+      }
+      this._ttsVoiceHandler = null
+    } catch {}
     if (this._toastTimer) { clearTimeout(this._toastTimer); this._toastTimer = null }
     if (this._searchDebounceTimer) { clearTimeout(this._searchDebounceTimer); this._searchDebounceTimer = null }
     // Remove paste listener attached in _setupPasteListener
@@ -1749,7 +1761,11 @@ export class BonnieCard extends LitElement {
     if (!this.hasSpeechSynthesis) return
     const update = () => { this.ttsVoices = window.speechSynthesis.getVoices() }
     update()
-    // Chrome loads voices async
+    // Chrome loads voices async. Stash the handler reference so
+    // disconnectedCallback can release the slot — assigning to
+    // `onvoiceschanged` clobbers any other handler on the page (HA
+    // itself, sibling cards) and would otherwise outlive this element.
+    this._ttsVoiceHandler = update
     window.speechSynthesis.onvoiceschanged = update
   }
 
