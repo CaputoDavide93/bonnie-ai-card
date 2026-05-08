@@ -281,6 +281,14 @@ const _ALLOWED_TAGS = [
 const _ALLOWED_ATTRS = [
   'alt', 'class', 'href', 'lang', 'loading', 'rel', 'src', 'target',
   'title',
+  // Code-block copy button stores its payload in `data-code`. The button
+  // is emitted by our own renderer (see `code` renderer above) with a
+  // pre-escaped value, so the only way it would carry a hostile payload
+  // is via the LLM closing one code block and opening another with a
+  // crafted attr — DOMPurify still URL/scheme-validates known link
+  // attrs, and `data-code` itself is consumed via getAttribute() in
+  // bonnie-card's _onCodeCopyClick (no innerHTML/eval).
+  'data-code',
 ]
 
 function sanitize(html: string): string {
