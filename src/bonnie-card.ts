@@ -308,6 +308,7 @@ export class BonnieCard extends LitElement {
   private _lastUserMessageText = ''
   private _speechRecognition: any = null
   private _ttsVoiceHandler: (() => void) | null = null
+  private _sendInFlight = false
   private _turnStartTime: number | null = null
 
   // Auto-title: regex to detect auto-generated session titles
@@ -1200,6 +1201,14 @@ export class BonnieCard extends LitElement {
     const hasAttachments = this.pendingAttachments.length > 0
     if (!text && !hasAttachments) return
     if (!this.sessionToken || this.streamingTurnId) return
+    // Synchronous in-flight flag. `streamingTurnId` only flips after
+    // the `await postChat` resolves, so two rapid Enter presses can
+    // both pass the guard above and produce two server-side turns
+    // (only the second `_eventSource` is tracked in `_closeStream`,
+    // leaving the first stream + runner orphaned). Set this BEFORE
+    // any await to close the race; clear it on every exit path below.
+    if (this._sendInFlight) return
+    this._sendInFlight = true
 
     // Build the message with attachment refs appended
     const attachmentRefs = this.pendingAttachments.map((a) => `[Attached image: ${a.path}]`).join('\n')
@@ -1272,6 +1281,8 @@ export class BonnieCard extends LitElement {
       // Remove orphaned user bubble and restore draft
       this.bubbles = this.bubbles.filter((b) => b.id !== userBubble.id)
       this.draft = text
+    } finally {
+      this._sendInFlight = false
     }
   }
 
@@ -1962,6 +1973,13 @@ export class BonnieCard extends LitElement {
     input.click()
   }
 
+  // Pre-upload validation cap. The server enforces its own limit (10 MB
+  // for the ClaudeHA upload route at the time of writing), but rejecting
+  // before we round-trip + create object URLs prevents a 50 MB pasted
+  // clipboard image from triggering 3 parallel oversize uploads + blob
+  // previews that leak memory until disconnect.
+  private static readonly MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
   private async _onFilesSelected(source: HTMLInputElement | File[]): Promise<void> {
     const files = Array.isArray(source) ? source : Array.from(source.files ?? [])
     if (!files.length) return
@@ -1972,7 +1990,20 @@ export class BonnieCard extends LitElement {
     }
     const toUpload = files.slice(0, remaining)
 
-    await Promise.all(toUpload.map((file) => this._uploadFile(file)))
+    // Filter out oversize files BEFORE the upload + blob preview.
+    const sized: File[] = []
+    for (const f of toUpload) {
+      if (f.size > BonnieCard.MAX_UPLOAD_BYTES) {
+        this._showToast(
+          `${f.name}: too large (${Math.round(f.size / 1024 / 1024)} MB > 10 MB)`,
+        )
+        continue
+      }
+      sized.push(f)
+    }
+    if (!sized.length) return
+
+    await Promise.all(sized.map((file) => this._uploadFile(file)))
   }
 
   // ── Feature 12: Paste image handler ───────────────────────────────────────

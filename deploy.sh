@@ -38,7 +38,7 @@ echo "  ✓ Uploaded"
 echo "→ Bumping resource URL in lovelace_resources..."
 REMOTE_URL="/local/$(basename "$CARD_PATH")"
 ssh "$HA_SSH" "python3 - << PY
-import json, time, uuid
+import json, os, time, uuid
 p = '/config/.storage/lovelace_resources'
 d = json.load(open(p))
 found = False
@@ -48,7 +48,18 @@ for i in d['data']['items']:
         found = True
 if not found:
     d['data']['items'].append({'id': uuid.uuid4().hex[:22], 'url': '$REMOTE_URL?v=' + str(int(time.time())), 'type': 'module'})
-json.dump(d, open(p,'w'), indent=2)
+# Atomic write: serialise to a sibling .tmp file and os.replace() it.
+# A direct in-place open('w') leaves a corrupt half-written
+# lovelace_resources file if Python crashes mid-dump or the SSH
+# connection drops — HA then fails to load any custom card on the
+# next restart. os.replace is atomic on POSIX so an interrupted
+# run leaves either the old or the new file, never a torn one.
+tmp = p + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(tmp, p)
 PY"
 echo "  ✓ URL bumped"
 
