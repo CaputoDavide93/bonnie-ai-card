@@ -277,6 +277,13 @@ const _ALLOWED_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'kbd', 'li',
   'ol', 'p', 'pre', 'span', 'strong', 'sub', 'sup', 'table', 'tbody',
   'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+  // bonnie-chart inline SVG renderer (renderBonnieChart) emits ONLY
+  // these elements. Listing them here re-enables the chart after the
+  // 1d76613 sanitiser tightening accidentally stripped every <svg> tag
+  // (charts rendered as empty divs). The dangerous SVG features
+  // (<animate>, <foreignObject>, <script>, etc.) stay in FORBID_TAGS
+  // below; presentation-only shape tags are safe.
+  'svg', 'g', 'text', 'line', 'polygon', 'polyline', 'circle', 'rect',
 ]
 const _ALLOWED_ATTRS = [
   'alt', 'class', 'href', 'lang', 'loading', 'rel', 'src', 'target',
@@ -289,6 +296,32 @@ const _ALLOWED_ATTRS = [
   // attrs, and `data-code` itself is consumed via getAttribute() in
   // bonnie-card's _onCodeCopyClick (no innerHTML/eval).
   'data-code',
+  // bonnie-chart SVG attributes. DOMPurify lowercases attribute names
+  // per the HTML spec, so the camelCase SVG forms (viewBox, textAnchor)
+  // must be listed in their LOWERCASED form here — listing 'viewBox'
+  // would silently match nothing and strip the attribute. None of these
+  // are event handlers or URL-bearing; DOMPurify already blocks on*=,
+  // javascript:, and CSS expressions via ALLOWED_URI_REGEXP + the global
+  // FORBID_ATTR list.
+  'viewbox', 'width', 'height', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+  'cx', 'cy', 'r', 'rx', 'ry', 'd', 'points', 'fill', 'fill-opacity',
+  'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+  'stroke-dasharray', 'text-anchor', 'font-size', 'font-weight',
+  'xmlns',
+]
+
+// SVG geometric / presentation attributes the chart renderer emits.
+// DOMPurify validates URI-shaped attribute values against
+// ALLOWED_URI_REGEXP regardless of whether the attribute is actually a
+// URI — values like "0 0 100 100", "50", "red" don't match the regex
+// and get silently stripped. ADD_URI_SAFE_ATTR exempts these so the
+// chart renders correctly. None of them carry scriptable surface.
+const _SVG_URI_SAFE_ATTRS = [
+  'viewbox', 'cx', 'cy', 'r', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+  'points', 'fill', 'stroke', 'stroke-width', 'text-anchor',
+  'width', 'height', 'rx', 'ry', 'd', 'fill-opacity',
+  'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray',
+  'font-size', 'font-weight', 'xmlns',
 ]
 
 function sanitize(html: string): string {
@@ -297,9 +330,27 @@ function sanitize(html: string): string {
     ALLOWED_ATTR: _ALLOWED_ATTRS,
     // Block any URL scheme other than http/https/data:image/blob/relative.
     ALLOWED_URI_REGEXP: /^(?:https?:|blob:|data:image\/(?:png|jpe?g|gif|webp);|\/|\.{1,2}\/|#)/i,
-    FORBID_TAGS: ['style', 'svg', 'math', 'iframe', 'object', 'embed', 'base', 'form'],
-    FORBID_ATTR: ['style', 'srcdoc', 'formaction'],
-    KEEP_CONTENT: false,
+    ADD_URI_SAFE_ATTR: _SVG_URI_SAFE_ATTRS,
+    // Keep scriptable / network-attaching SVG features in FORBID_TAGS even
+    // though we removed bare 'svg' — these are the real XSS surface that
+    // the 1d76613 commit was guarding against:
+    //   - animate / animateTransform: SMIL with onbegin/onend handlers.
+    //   - foreignObject: lets HTML (including scripts) live inside SVG.
+    //   - use: external-resource fetch (xlink:href can pull JS).
+    //   - script, set, image: each carries scriptable surface.
+    FORBID_TAGS: [
+      'style', 'math', 'iframe', 'object', 'embed', 'base', 'form',
+      'animate', 'animatetransform', 'animatemotion', 'foreignobject',
+      'use', 'set', 'image',
+    ],
+    FORBID_ATTR: ['style', 'srcdoc', 'formaction', 'xlink:href'],
+    // KEEP_CONTENT defaults to true. We previously set it to false to
+    // discard the inner text of removed tags (e.g. <script>code</script>
+    // would leave 'code' behind as a text node). The strict setting also
+    // strips inner text of ALLOWED SVG <text> elements — bonnie-chart
+    // labels rendered as empty. Reverting to default: <script>'s tag is
+    // still removed (no execution), only its textual content survives
+    // as DOM text, which is harmless.
     RETURN_TRUSTED_TYPE: false,
   })
 }
