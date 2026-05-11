@@ -117,6 +117,13 @@ export async function cancelStream(
     await request<void>(`${baseUrl}/api/stream/${turnId}`, {
       method: 'DELETE',
       token,
+      // keepalive: true makes the request survive page-close / tab-close
+      // so the backend actually receives the DELETE and stops burning
+      // Claude API tokens. Without it, fetch() is cancelled the moment
+      // the page tears down — the runner keeps generating until the
+      // server-side SSE-write-side detects the closed socket (which,
+      // with a silent runner, can take many minutes).
+      keepalive: true,
     })
   } catch {
     // Best-effort cancel; ignore errors

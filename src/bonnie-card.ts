@@ -1421,6 +1421,16 @@ export class BonnieCard extends LitElement {
     let currentToolId: string | null = null
 
     es.addEventListener('event', (e: MessageEvent) => {
+      // Stale-stream guard: the previous generation check at L1416 only
+      // protected the bootstrap path. EventSource spec says no events
+      // fire after .close(), but Chromium has been observed (122+) to
+      // deliver queued events post-close — and stream N's events can
+      // then mutate state belonging to stream N+1 (tokens appended to
+      // the wrong assistant bubble, tool-result lands on a stale tool
+      // bubble id). Cheap defence: bail at the head of every handler
+      // when our generation doesn't match the current one.
+      if (gen !== this._streamGeneration) return
+
       let parsed: SseEvent
       try {
         parsed = JSON.parse(e.data) as SseEvent
@@ -1526,6 +1536,7 @@ export class BonnieCard extends LitElement {
     })
 
     es.addEventListener('done', () => {
+      if (gen !== this._streamGeneration) return
       this.bubbles = this.bubbles.map((b) =>
         b.streaming ? { ...b, streaming: false } : b,
       )
@@ -1533,6 +1544,7 @@ export class BonnieCard extends LitElement {
     })
 
     es.onerror = (e: Event) => {
+      if (gen !== this._streamGeneration) return
       const target = e.target as EventSource
       if (target.readyState === EventSource.CONNECTING) {
         // Browser is attempting reconnect — server closed naturally without
@@ -1984,6 +1996,21 @@ export class BonnieCard extends LitElement {
   // previews that leak memory until disconnect.
   private static readonly MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
+  // MIME allowlist applied to every entry point (picker, paste, drop).
+  // Browser-reported `f.type` is extension-based on most platforms, so
+  // this is defence-in-depth; the server validates magic bytes before
+  // persisting. Keep this in sync with the `accept=` attr on the
+  // file-input element and the drop-handler in _handleDroppedFiles.
+  private static readonly ALLOWED_UPLOAD_MIME = new Set<string>([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+  ])
+
   private async _onFilesSelected(source: HTMLInputElement | File[]): Promise<void> {
     const files = Array.isArray(source) ? source : Array.from(source.files ?? [])
     if (!files.length) return
@@ -1994,9 +2021,21 @@ export class BonnieCard extends LitElement {
     }
     const toUpload = files.slice(0, remaining)
 
-    // Filter out oversize files BEFORE the upload + blob preview.
+    // MIME allowlist applied to ALL entry points (file picker, paste,
+    // drag-and-drop). Previously only _handleDroppedFiles validated; the
+    // picker's `accept=` attribute is a hint that users can override,
+    // and the paste path skipped validation entirely. With this gate,
+    // a clipboard with an ISO or executable doesn't reach _uploadFile
+    // and waste both bandwidth and a server-side rejection round-trip.
+    // f.type is browser-sniffed (extension-based on most platforms) so
+    // this is defence-in-depth — the server still does magic-byte
+    // checks before persisting.
     const sized: File[] = []
     for (const f of toUpload) {
+      if (!BonnieCard.ALLOWED_UPLOAD_MIME.has(f.type)) {
+        this._showToast(`${f.name}: file type "${f.type || 'unknown'}" not allowed`)
+        continue
+      }
       if (f.size > BonnieCard.MAX_UPLOAD_BYTES) {
         this._showToast(
           `${f.name}: too large (${Math.round(f.size / 1024 / 1024)} MB > 10 MB)`,
@@ -2035,10 +2074,11 @@ export class BonnieCard extends LitElement {
   private _handleDroppedFiles(e: DragEvent): void {
     const files = e.dataTransfer?.files
     if (!files || files.length === 0) return
-    const accepted = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'text/csv']
-    const valid = Array.from(files).filter((f) => accepted.includes(f.type))
-    if (valid.length === 0) return
-    void this._onFilesSelected(valid)
+    // _onFilesSelected enforces ALLOWED_UPLOAD_MIME — no need to filter
+    // here. Previously this path was the only one that validated MIME
+    // (the picker and paste paths trusted the browser), so we forward
+    // raw files and let the single gate decide.
+    void this._onFilesSelected(Array.from(files))
   }
 
   private async _uploadFile(file: File): Promise<void> {
@@ -2182,9 +2222,38 @@ export class BonnieCard extends LitElement {
 
   private _handleApiError(e: unknown): void {
     if (e instanceof ApiError && e.status === 401) {
-      this.authError = true
+      // The 30-day session token expired (or was server-side invalidated).
+      // The kiosk URL token in the dashboard YAML is still good, so try
+      // a silent re-exchange before showing the "Auth failed — please
+      // reload" overlay. Without this, a 24/7 kiosk tablet was
+      // permanently stuck after 30 days until someone hard-reloaded.
+      void this._tryReauth()
     } else {
-      this.errorMessage = (e as Error).message
+      // Be robust to non-Error rejections (Safari TypeError("Load failed"),
+      // SyntaxError on JSON-parse of HTML, raw strings from edge cases).
+      this.errorMessage = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  private async _tryReauth(): Promise<void> {
+    if (!this.config.kiosk_token) {
+      this.authError = true
+      return
+    }
+    try {
+      const auth = await kioskExchange(
+        this.config.backend_url,
+        this.config.kiosk_token,
+      )
+      this.sessionToken = auth.session_token
+      // Don't reset authError if we'd already shown it; reset only when
+      // we actually got back in.
+      this.authError = false
+      this.errorMessage = null
+    } catch (e) {
+      // Both layers failed — surface the original auth state so the
+      // user can hard-reload (last resort).
+      this.authError = true
     }
   }
 
