@@ -346,14 +346,14 @@ export class BonnieCard extends LitElement {
     document.removeEventListener('keydown', this._onGlobalKeydown)
     this._stopListening()
     this._stopSpeaking()
-    // Release the global speechSynthesis voice-list handler. We installed
-    // it in _initTtsVoices via `window.speechSynthesis.onvoiceschanged =
-    // update`, which a) clobbers any existing handler on the page and
-    // b) keeps a closure over `this`, leaving the card detached-but-alive
-    // after unmount. Only null it out if we still own the slot.
+    // Release the speechSynthesis voice-list listener. Installed in
+    // _loadTtsVoices via addEventListener (not the onvoiceschanged
+    // property — see comment there). removeEventListener is a no-op
+    // if the handler was never registered, so wrapping in try/catch
+    // is paranoia but cheap.
     try {
-      if (this._ttsVoiceHandler && window.speechSynthesis.onvoiceschanged === this._ttsVoiceHandler) {
-        window.speechSynthesis.onvoiceschanged = null
+      if (this._ttsVoiceHandler) {
+        window.speechSynthesis.removeEventListener('voiceschanged', this._ttsVoiceHandler)
       }
       this._ttsVoiceHandler = null
     } catch {}
@@ -1772,12 +1772,16 @@ export class BonnieCard extends LitElement {
     if (!this.hasSpeechSynthesis) return
     const update = () => { this.ttsVoices = window.speechSynthesis.getVoices() }
     update()
-    // Chrome loads voices async. Stash the handler reference so
-    // disconnectedCallback can release the slot — assigning to
-    // `onvoiceschanged` clobbers any other handler on the page (HA
-    // itself, sibling cards) and would otherwise outlive this element.
+    // Chrome loads voices async. Use addEventListener instead of
+    // assigning to onvoiceschanged: the property-setter form clobbers
+    // any other handler on the page (sibling cards, HA itself, browser
+    // extensions like page-translate), so two cards mounted on one
+    // dashboard would silently break each other's voice list. The
+    // listener form coexists; the previous "only-null-if-we-own-it"
+    // guard in disconnectedCallback was racy against interleaved
+    // mount/unmount.
     this._ttsVoiceHandler = update
-    window.speechSynthesis.onvoiceschanged = update
+    window.speechSynthesis.addEventListener('voiceschanged', update)
   }
 
   private _stripMarkdown(text: string): string {
