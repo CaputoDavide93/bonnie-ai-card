@@ -273,10 +273,15 @@ marked.use({ renderer })
 // (SVG <animate onbegin>, <math>, formaction, srcdoc, malformed nesting,
 // CSS expressions, data:image/svg+xml etc.).
 const _ALLOWED_TAGS = [
-  'a', 'abbr', 'b', 'blockquote', 'br', 'caption', 'code', 'div', 'em',
+  'a', 'abbr', 'b', 'blockquote', 'br', 'button', 'caption', 'code', 'div', 'em',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'kbd', 'li',
   'ol', 'p', 'pre', 'span', 'strong', 'sub', 'sup', 'table', 'tbody',
   'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+  // `button` is here for the code-block copy button emitted by the
+  // `code` renderer (see above). It carries only `class` and
+  // `data-code`; no `type=submit` form-attached behaviour. Without
+  // this entry the button was stripped and the copy-button click
+  // delegate had nothing to bind to.
   // bonnie-chart inline SVG renderer (renderBonnieChart) emits ONLY
   // these elements. Listing them here re-enables the chart after the
   // 1d76613 sanitiser tightening accidentally stripped every <svg> tag
@@ -324,7 +329,27 @@ const _SVG_URI_SAFE_ATTRS = [
   'font-size', 'font-weight', 'xmlns',
 ]
 
+// DOMPurify by default removes target= from anchors (tabnabbing
+// protection) even when target is in ALLOWED_ATTR. Re-apply
+// target="_blank" + rel="noopener noreferrer" after sanitisation on
+// every anchor that has an http(s) href, so external links open in a
+// new tab without leaking opener access back to the host page.
+// Idempotent: if both attrs are already present, no-op.
+let _afterSanitizeHookInstalled = false
+function _installAnchorTargetHook(): void {
+  if (_afterSanitizeHookInstalled) return
+  _afterSanitizeHookInstalled = true
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (!(node instanceof HTMLAnchorElement)) return
+    const href = node.getAttribute('href') || ''
+    if (!/^https?:\/\//i.test(href)) return
+    node.setAttribute('target', '_blank')
+    node.setAttribute('rel', 'noopener noreferrer')
+  })
+}
+
 function sanitize(html: string): string {
+  _installAnchorTargetHook()
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: _ALLOWED_TAGS,
     ALLOWED_ATTR: _ALLOWED_ATTRS,
