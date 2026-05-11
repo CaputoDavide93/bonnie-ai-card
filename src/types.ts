@@ -174,8 +174,13 @@ export interface UploadedAttachment {
   path: string        // /workspace/.bonnie-uploads/...
   mimeType: string
   size: number
-  /** URL.createObjectURL of the original File — for preview thumbnail */
-  localPreviewUrl: string
+  /** URL.createObjectURL of the original File — for preview thumbnail.
+   * Cleared (set undefined) after the bubble is sent to the server,
+   * since the server-stored copy is the source of truth and keeping
+   * the blob alive leaks memory. _revokeAttachmentUrls is also
+   * tolerant of missing values.
+   */
+  localPreviewUrl?: string
 }
 
 // ── Plugin ─────────────────────────────────────────────────────────────────

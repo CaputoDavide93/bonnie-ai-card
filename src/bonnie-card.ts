@@ -1274,6 +1274,18 @@ export class BonnieCard extends LitElement {
       )
       this.streamingTurnId = turn_id
       this._turnStartTime = Date.now()
+      // Revoke blob: URLs we created for the local preview chips now that
+      // the server has accepted the attachment paths. The server-stored
+      // copy is the source of truth for re-render via getSession; keeping
+      // the blobs alive until disconnect leaks ~MB per uploaded image.
+      // Note: the bubble's `attachments` still reference paths server-
+      // side, so this only revokes the LOCAL preview URLs, not the data.
+      for (const a of sentAttachments) {
+        if (a.localPreviewUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(a.localPreviewUrl)
+          a.localPreviewUrl = undefined
+        }
+      }
       void this._openStream(turn_id)
     } catch (e) {
       this._handleApiError(e)
@@ -2442,6 +2454,31 @@ export class BonnieCard extends LitElement {
 
   // ── Render helpers ────────────────────────────────────────────────────────
 
+  /** Cached id of the last assistant bubble; invalidated when bubbles
+   * array identity changes. Computed once per render pass instead of
+   * once per bubble — the previous `[...this.bubbles].reverse().find()`
+   * inside _renderBubble was O(N) for every bubble that called it, so
+   * total render cost was O(N²). A 300-bubble session was doing ~90k
+   * spread+reverse ops every time any bubble's text changed.
+   */
+  private _lastAssistantId: string | null = null
+  private _lastAssistantBubblesRef: readonly Bubble[] | null = null
+  private _getLastAssistantId(): string | null {
+    if (this._lastAssistantBubblesRef === this.bubbles) {
+      return this._lastAssistantId
+    }
+    let result: string | null = null
+    for (let i = this.bubbles.length - 1; i >= 0; i--) {
+      if (this.bubbles[i].role === 'assistant') {
+        result = this.bubbles[i].id
+        break
+      }
+    }
+    this._lastAssistantBubblesRef = this.bubbles
+    this._lastAssistantId = result
+    return result
+  }
+
   private _renderBubble(b: Bubble): TemplateResult {
     // Hide tool-use bubbles for non-admin users — show only the final answer
     if (b.role === 'tool' && !this.isAdmin) return html``
@@ -2455,9 +2492,9 @@ export class BonnieCard extends LitElement {
       ? html`<span class="streaming-text">${b.text ?? ''}</span><span class="cursor"></span>`
       : unsafeHTML(renderMarkdown(b.text ?? '')))
 
-    // Determine if this is the last assistant bubble (for regenerate action)
-    const lastAssistant = [...this.bubbles].reverse().find((x) => x.role === 'assistant')
-    const isLastAssistant = !b.streaming && b.id === lastAssistant?.id
+    // Determine if this is the last assistant bubble (for regenerate action).
+    // O(1) amortised — see _getLastAssistantId.
+    const isLastAssistant = !b.streaming && b.id === this._getLastAssistantId()
 
     return html`
       <div class=${classMap({ 'bubble-row': true, [b.role]: true, 'new-msg': !!b.isNew })} data-turn-id=${b.turnId ?? ''}>
@@ -2517,7 +2554,7 @@ export class BonnieCard extends LitElement {
                       src=${a.localPreviewUrl}
                       alt=${a.filename}
                       title=${a.filename}
-                      @click=${() => this._openLightbox(a.localPreviewUrl)}
+                      @click=${() => a.localPreviewUrl && this._openLightbox(a.localPreviewUrl)}
                     />`
                   : html`<span class="bubble-file-chip" title=${a.filename}>
                       ${a.mimeType === 'application/pdf' ? '\u{1F4C4}' : '\u{1F4DD}'} ${a.filename}
@@ -2743,11 +2780,11 @@ export class BonnieCard extends LitElement {
           <div class="session-list">
             ${pinnedItems.length > 0 ? html`
               <div class="sidebar-section-label pinned-label">${t('pinned')}</div>
-              ${pinnedItems.map((s) => this._renderSessionItem(s))}
+              ${repeat(pinnedItems, (s) => s.id, (s) => this._renderSessionItem(s))}
             ` : nothing}
             ${groups.map((g) => html`
               <div class="sidebar-section-label">${g.label}</div>
-              ${g.sessions.map((s) => this._renderSessionItem(s))}
+              ${repeat(g.sessions, (s) => s.id, (s) => this._renderSessionItem(s))}
             `)}
           </div>
         `}
@@ -2761,7 +2798,7 @@ export class BonnieCard extends LitElement {
       ${this.showArchivedSessions && this.archivedSessions.length > 0 ? html`
         <div class="session-list archived-list">
           <div class="sidebar-section-label">${t('archived')}</div>
-          ${this.archivedSessions.map((s) => this._renderSessionItem(s, true))}
+          ${repeat(this.archivedSessions, (s) => s.id, (s) => this._renderSessionItem(s, true))}
         </div>
       ` : nothing}
       ${this.showArchivedSessions && this.archivedSessions.length === 0 ? html`
@@ -2892,7 +2929,7 @@ export class BonnieCard extends LitElement {
           <!-- Settings overlay -->
           ${this.showSettings ? html`
             <div class="analytics-overlay" @click=${() => this._closeSettings()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Settings" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgGear()} Settings</span>
                   <button class="icon-btn" @click=${() => this._closeSettings()} aria-label="Close">${svgClose()}</button>
@@ -2959,7 +2996,7 @@ export class BonnieCard extends LitElement {
           <!-- Feature 13: Analytics overlay -->
           ${this.showAnalytics ? html`
             <div class="analytics-overlay" @click=${() => this._closeAnalytics()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Usage Analytics" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgBarChart()} Usage Analytics</span>
                   <button class="icon-btn" @click=${() => this._closeAnalytics()}>${svgClose()}</button>
@@ -3036,7 +3073,7 @@ export class BonnieCard extends LitElement {
           <!-- Feature 6: Memories overlay -->
           ${this.showMemories ? html`
             <div class="analytics-overlay" @click=${() => this._closeMemories()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Saved Memories" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgMemory()} Saved Memories (${this.memories.length})</span>
                   <div style="display:flex;gap:4px;align-items:center">
@@ -3089,7 +3126,7 @@ export class BonnieCard extends LitElement {
           <!-- Feature 12: Plugins admin overlay -->
           ${this.showPlugins ? html`
             <div class="analytics-overlay" @click=${() => this._closePlugins()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Plugins" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgPuzzle()} Plugins</span>
                   <button class="icon-btn" @click=${() => this._closePlugins()}>${svgClose()}</button>
@@ -3205,7 +3242,7 @@ export class BonnieCard extends LitElement {
           <!-- User admin overlay -->
           ${this.showUsers ? html`
             <div class="analytics-overlay" @click=${() => this._closeUsers()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Users" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgUsers()} Users</span>
                   <div style="display:flex;gap:4px;align-items:center">
@@ -3289,7 +3326,7 @@ export class BonnieCard extends LitElement {
           <!-- Proactive Rules overlay (admin only) -->
           ${this.showRules ? html`
             <div class="analytics-overlay" @click=${() => this._closeRules()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Proactive Rules" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgBell()} Proactive Rules (${this.proactiveRules.length})</span>
                   <div style="display:flex;gap:4px;align-items:center">
@@ -3369,7 +3406,7 @@ export class BonnieCard extends LitElement {
           <!-- Notification Center overlay (all users) -->
           ${this.showNotifications ? html`
             <div class="analytics-overlay" @click=${() => this._closeNotifications()}>
-              <div class="analytics-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="analytics-panel" role="dialog" aria-modal="true" aria-label="Notifications" @click=${(e: Event) => e.stopPropagation()}>
                 <div class="analytics-header">
                   <span class="analytics-title">${svgBell()} Notifications</span>
                   <button class="icon-btn" @click=${() => this._closeNotifications()}>${svgClose()}</button>
